@@ -1747,7 +1747,7 @@
             inset 0 0 30px rgba(217, 119, 87, 0.1);
         }
       }
-    </style><link href="chrome-extension://alhgpfoeiimagjlnfekdhkjlkiomcapa/js/css/inject.css" rel="stylesheet" type="text/css" data-apio="true"><link href="chrome-extension://alhgpfoeiimagjlnfekdhkjlkiomcapa/js/css/inject.css" rel="stylesheet" type="text/css" data-apio="true"></head>
+    </style><link href="chrome-extension://alhgpfoeiimagjlnfekdhkjlkiomcapa/js/css/inject.css" rel="stylesheet" type="text/css" data-apio="true"><link href="chrome-extension://alhgpfoeiimagjlnfekdhkjlkiomcapa/js/css/inject.css" rel="stylesheet" type="text/css" data-apio="true"><link href="chrome-extension://alhgpfoeiimagjlnfekdhkjlkiomcapa/js/css/inject.css" rel="stylesheet" type="text/css" data-apio="true"></head>
 <body class="" data-theme="light" style="font-size: 18px;">
 
 <div id="auth-loading-overlay" style="display: none;">
@@ -16551,7 +16551,7 @@ function ceShowVideoPanel(){
       if(sc)sc.value=v.currentTime;
       if(fl)fl.style.width=(totalDur>0?v.currentTime/totalDur*100:0)+'%';
       if(cu){var m=Math.floor(v.currentTime/60);cu.textContent=m+':'+String(Math.floor(v.currentTime%60)).padStart(2,'0');}
-      if(pb)pb.textContent=v.paused?'&#9654;':'&#9646;&#9646;';
+      if(pb)pb.textContent=v.paused?'▶':'⏸';
       if(_ceState.videoTrimEnd&&v.currentTime>=_ceState.videoTrimEnd)v.pause();
     },100);
   }
@@ -27397,24 +27397,35 @@ function bcpOpenPreviewSignoff(){
   }).join("");
   ov.innerHTML='<div style="background:#111;border-radius:20px;max-width:520px;width:90%;max-height:90vh;overflow-y:auto;border:1px solid #222;box-shadow:0 32px 80px rgba(0,0,0,.8);">'
     +'<div style="padding:20px 24px 16px;border-bottom:1px solid #222;display:flex;align-items:center;justify-content:space-between;">'
-    +'<div><div style="font-size:18px;font-weight:900;color:#fff;">👁 Preview & Sign Off</div>'
+    +'<div><div style="font-size:18px;font-weight:900;color:#fff;">👁 Preview &amp; Sign Off</div>'
     +'<div style="font-size:11px;color:#666;margin-top:2px;">Review your content before posting to social media</div></div>'
     +'<button onclick="document.getElementById(\'bcp-preview-modal\').remove()" style="width:32px;height:32px;border-radius:50%;background:#222;border:none;color:#aaa;font-size:18px;cursor:pointer;">×</button>'
     +'</div>'
-    +(previewSrc?'<div style="padding:20px;text-align:center;background:#0a0a0a;border-bottom:1px solid #222;"><img src="'+previewSrc+'" style="max-width:100%;max-height:320px;border-radius:12px;object-fit:contain;" /></div>':'<div style="padding:40px;text-align:center;color:#444;">Load an image or video first to see preview</div>')
+    +(previewSrc?'<div style="padding:20px;text-align:center;background:#0a0a0a;border-bottom:1px solid #222;"><img src="'+previewSrc+'" style="max-width:100%;max-height:320px;border-radius:12px;object-fit:contain;"></div>':'<div style="padding:40px;text-align:center;color:#444;">Load an image or video first to see preview</div>')
     +'<div style="padding:16px 20px;border-bottom:1px solid #222;">'
     +'<div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#555;margin-bottom:8px;">Caption</div>'
     +'<textarea rows="3" style="width:100%;background:#1a1a1a;border:1px solid #333;border-radius:9px;padding:10px 12px;color:#fff;font-size:12px;outline:none;resize:none;box-sizing:border-box;" placeholder="Add your caption here...">'
-    +((document.getElementById("bcp-caption-text")&&document.getElementById("bcp-caption-text").value)||"")
+    +((document.getElementById("bcp-caption-text")&amp;&amp;document.getElementById("bcp-caption-text").value)||"")
     +'</textarea></div>'
     +'<div style="padding:16px 20px;border-bottom:1px solid #222;">'
     +'<div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#555;margin-bottom:10px;">Post to Platform</div>'
     +'<div style="display:flex;flex-wrap:wrap;gap:8px;">'+platformBtns+'</div></div>'
     +'<div style="padding:16px 20px;display:flex;gap:10px;">'
-    +'<button onclick="typeof ceExportImage===\'function\'?ceExportImage():null;document.getElementById(\'bcp-preview-modal\').remove();showToast(\'Approved! Content exported.\')" style="flex:1;padding:13px;background:linear-gradient(135deg,#059669,#047857);color:#fff;border:none;border-radius:10px;font-size:13px;font-weight:800;cursor:pointer;">✅ Approve & Export</button>'
+    +'<button onclick="typeof ceExportImage===\'function\'?ceExportImage():null;document.getElementById(\'bcp-preview-modal\').remove();showToast(\'Approved! Content exported.\')" style="flex:1;padding:13px;background:linear-gradient(135deg,#059669,#047857);color:#fff;border:none;border-radius:10px;font-size:13px;font-weight:800;cursor:pointer;">✅ Approve &amp; Export</button>'
     +'<button onclick="document.getElementById(\'bcp-preview-modal\').remove()" style="flex:1;padding:13px;background:#1a1a1a;border:1px solid #333;color:#aaa;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;">✏️ Keep Editing</button>'
     +'</div></div>';
   document.body.appendChild(ov);
   ov.addEventListener("click",function(e){if(e.target===ov)ov.remove();});
+}
+<div id="claude-agent-glow-border" style="position: fixed; inset: 0px; pointer-events: none; z-index: 2147483646; opacity: 0; transition: opacity 0.3s ease-in-out; animation: 2s ease-in-out 0s infinite normal none running claude-pulse; box-shadow: rgba(217, 119, 87, 0.5) 0px 0px 10px inset, rgba(217, 119, 87, 0.3) 0px 0px 20px inset, rgba(217, 119, 87, 0.1) 0px 0px 30px inset;"></div>
+function ceResetAdjust(){
+  if(!_ceState||!_ceState.filter)return;
+  _ceState.filter={brightness:100,contrast:100,saturation:100,warmth:0,blur:0};
+  ['ce-brightness','ce-contrast','ce-saturation'].forEach(function(id){var el=document.getElementById(id);if(el)el.value=100;});
+  var w=document.getElementById('ce-warmth');if(w)w.value=0;
+  var b=document.getElementById('ce-blur');if(b)b.value=0;
+  _ceState.filterName='none';
+  if(typeof ceRedraw==='function')ceRedraw();
+  showToast('Adjustments reset');
 }
 </body></html>
