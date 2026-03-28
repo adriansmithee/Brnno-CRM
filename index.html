@@ -27365,16 +27365,7 @@ function djEmailConfirmation(jobId) {
 }
 
 // ══ HOOK INTO setPage ══
-(function() {
-  const _origSP2 = window.setPage;
-  window.setPage = function(page, el) {
-    _origSP2(page, el);
-    if (page === 'detailer-jobs') {
-      window._currentPage = 'detailer-jobs';
-      renderDetailerJobsPage();
-    }
-  };
-})();
+
 
 
 function bcpOpenPreviewSignoff(){
