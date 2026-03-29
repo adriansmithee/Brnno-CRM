@@ -179,6 +179,44 @@
   /* ── CONTENT ── */
   #content{padding:24px 28px;}
 
+  /* Content Studio: lock to viewport so the canvas column doesn’t stretch with the tall right sidebar */
+  #content-studio-page{
+    box-sizing: border-box;
+    height: calc(100dvh - 58px - 48px);
+    max-height: calc(100dvh - 58px - 48px);
+    min-height: 0;
+    overflow: hidden;
+  }
+  /* Keep preview near the top of the dark area; cap height so 9:16 doesn’t push the frame off-screen */
+  #ce-canvas-wrap{
+    justify-content: flex-start !important;
+    align-items: center !important;
+    padding: 10px 8px 16px;
+    box-sizing: border-box;
+    max-height: min(64svh, 620px) !important;
+    flex: 1 1 auto !important;
+  }
+  @media (max-height: 720px){
+    #ce-canvas-wrap{
+      max-height: min(52svh, 480px) !important;
+    }
+  }
+  /* Full editor (Creative+): preview dominates upper area; tools dock below */
+  #bcp-editor-layout #ce-preview-stack{
+    flex: 1 1 44%;
+    min-height: 0;
+  }
+  #bcp-editor-layout #ce-canvas-wrap{
+    max-height: min(50svh, 620px) !important;
+    flex: 1 1 auto !important;
+  }
+  @media (max-width: 900px){
+    #content-studio-page{
+      height: calc(100dvh - 58px - 24px - 72px);
+      max-height: calc(100dvh - 58px - 24px - 72px);
+    }
+  }
+
   /* ── STAT CARDS ── */
   .stats-row{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:16px;}
   .stat-card{background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius);padding:18px 18px 16px;transition:all .25s;position:relative;overflow:hidden;cursor:default;}
@@ -1999,7 +2037,7 @@
 </div>
 
 <div id="forecast-page" style="display:none;"></div>
-<div id="content-studio-page" style="display:none;height:100%;"></div>
+<div id="content-studio-page" style="display:none;"></div>
 <div id="detailer-jobs-page" style="display:none;"></div>
     <div id="reps-page">
 
@@ -13820,9 +13858,9 @@ let _csEditPost = null; // post being edited
 function renderContentStudio(){
   const page = document.getElementById('content-studio-page');
   if(!page) return;
-  page.style.cssText = 'display:block;height:100%;overflow:hidden;';
+  page.style.cssText = 'display:flex;flex-direction:column;overflow:hidden;min-height:0;';
 
-  page.innerHTML = '<div style="display:flex;flex-direction:column;height:100%;background:var(--bg);">'
+  page.innerHTML = '<div style="display:flex;flex-direction:column;flex:1;min-height:0;height:100%;background:var(--bg);">'
     // Header
     + '<div style="padding:16px 24px 0;flex-shrink:0;">'
       + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">'
@@ -13834,8 +13872,7 @@ function renderContentStudio(){
           + csTabBtn('analytics','📊 Analytics', _csView==='analytics')
         + '</div>'
         + '<button onclick="csOpenCompose(null)" style="padding:8px 18px;background:var(--accent);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">+ New Post</button>'
-        + '<button onclick="typeof bcpOpenBrandKit===\'function\'&&bcpOpenBrandKit()" style="padding:8px 14px;background:rgba(232,168,56,.1);border:1px solid rgba(232,168,56,.4);border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;color:var(--gold2);">🎨 Brand Kit</button>'
-          + '<button onclick="typeof bcpOpenBrandKit===\'function\'&&bcpOpenBrandKit()" style="padding:8px 14px;background:linear-gradient(135deg,rgba(232,168,56,.15),rgba(232,168,56,.08));border:1px solid rgba(232,168,56,.4);border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;color:var(--gold2);">🎨 Brand Kit</button>'
+        + '<button onclick="typeof bcpOpenBrandKit===\'function\'&&bcpOpenBrandKit()" style="padding:8px 14px;background:linear-gradient(135deg,rgba(232,168,56,.15),rgba(232,168,56,.08));border:1px solid rgba(232,168,56,.4);border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;color:var(--gold2);">🎨 Brand Kit</button>'
       
       + '</div>'
     + '</div>'
@@ -13959,6 +13996,17 @@ function csOpenCompose(postOrId){
   const prefill = post?._prefill || {};
   const isNew = !p.id;
   const campaigns = csGetCampaigns();
+  if(!isNew && p.videoData){
+    window._cePendingVideoUrl=p.videoData;
+    window._cePendingVideoData=p.videoData;
+    window._cePendingMediaType='video';
+    window._cePendingImage=null;
+  }else if(!isNew && p.imageData){
+    window._cePendingImage=p.imageData;
+    window._cePendingMediaType='image';
+    window._cePendingVideoUrl=null;
+    window._cePendingVideoData=null;
+  }
 
   // Get before/after photos from leads for quick insert
   const leadPhotos = [];
@@ -14069,7 +14117,7 @@ function csOpenCompose(postOrId){
           + '<button onclick="csSavePost(\'scheduled\')" style="flex:1;padding:10px 4px;background:var(--accent);color:#fff;border:none;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;">📅 Schedule</button>'
           + '<button onclick="csSavePost(\'published\')" style="flex:1;padding:10px 4px;background:#22c55e;color:#fff;border:none;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;">✅ Published</button>'
         + '</div>'
-        + '<button onclick="csDownloadPostPackage()" style="width:100%;padding:10px;background:rgba(212,160,23,.1);border:1px solid rgba(212,160,23,.3);border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;color:var(--gold2);margin-bottom:8px;">⬇️ Download Post (Image + Caption)</button>'
+        + '<button onclick="csDownloadPostPackage()" style="width:100%;padding:10px;background:rgba(212,160,23,.1);border:1px solid rgba(212,160,23,.3);border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;color:var(--gold2);margin-bottom:8px;">⬇️ Download Post (Media + Caption)</button>'
         + (p.id ? '<button onclick="csDeletePost(\''+p.id+'\')" style="width:100%;padding:8px;background:transparent;border:1px solid rgba(247,79,106,.3);border-radius:7px;color:#f74f6a;font-size:11px;cursor:pointer;">🗑 Delete Post</button>' : '')
       + '</div>'
     + '</div>'
@@ -14084,6 +14132,7 @@ function csOpenCompose(postOrId){
   + '</div>';
 
   csUpdateCharCount();
+  if(window._cePendingVideoUrl||window._cePendingImage) setTimeout(function(){ if(typeof csInsertComposeMediaPreview==='function') csInsertComposeMediaPreview(); }, 0);
 }
 
 function csPreviewHTML(p){
@@ -14091,17 +14140,20 @@ function csPreviewHTML(p){
   const platforms = p.platforms||['instagram'];
   const plat = CS_PLATFORMS.find(pl=>pl.id===platforms[0]) || CS_PLATFORMS[0];
   const rep = currentRep || 'Your Brand';
-  const img = window._cePendingImage || p.imageData || null;
+  const vid = window._cePendingVideoUrl || p.videoData || null;
+  const img = (!vid && (window._cePendingImage || p.imageData)) || null;
   const avatarUrl = (_currentUserObj?.avatar) || null;
   const avatarHtml = avatarUrl
     ? '<img src="'+avatarUrl+'" style="width:32px;height:32px;border-radius:50%;object-fit:cover;">'
     : '<div style="width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,var(--gold2),var(--accent));display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:800;color:#fff;">'+( rep[0]||'B')+'</div>';
 
-  const imageSection = img
-    ? '<img src="'+img+'" style="width:100%;max-height:240px;object-fit:cover;border-radius:8px;margin-bottom:10px;">'
+  const imageSection = vid
+    ? '<video src="'+vid+'" controls muted playsinline style="width:100%;max-height:min(320px,45vh);object-fit:contain;border-radius:8px;margin-bottom:10px;background:#000;"></video>'
+    : img
+    ? '<img src="'+img+'" alt="" style="width:100%;max-height:min(240px,40vh);object-fit:contain;border-radius:8px;margin-bottom:10px;">'
     : '<div style="width:100%;height:160px;background:#f3f4f6;border-radius:8px;margin-bottom:10px;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:6px;">'
       +'<span style="font-size:28px;">'+plat.icon+'</span>'
-      +'<span style="font-size:10px;color:#aaa;">Export image from Creative Editor</span>'
+      +'<span style="font-size:10px;color:#aaa;">Attach media from Creative+</span>'
       +'</div>';
 
   return '<div style="background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,.15);">'
@@ -14147,10 +14199,11 @@ function csUpdateCharCount(){
   cc.style.color = len > limit ? '#f74f6a' : len > limit*0.9 ? '#f59e0b' : 'var(--text3)';
   // Live-update preview with current caption AND image
   const pp = document.getElementById('cs-preview-panel');
-  if(pp) pp.innerHTML = csPreviewHTML({
+  if(pp)   pp.innerHTML = csPreviewHTML({
     caption: ta.value,
     platforms: platforms,
-    imageData: window._cePendingImage || null,
+    imageData: (window._cePendingMediaType==='video') ? null : (window._cePendingImage || null),
+    videoData: (window._cePendingMediaType==='video') ? (window._cePendingVideoData || window._cePendingVideoUrl) : null,
   });
 }
 
@@ -14269,11 +14322,23 @@ function csDownloadPostPackage(){
   const caption = document.getElementById('cs-caption')?.value||'';
   const platforms = csGetSelectedPlatforms();
   const img = window._cePendingImage;
+  const vid = window._cePendingVideoUrl;
   const contentType = document.getElementById('cs-content-type')?.value||'post';
   const date = new Date().toLocaleDateString();
 
-  if(!img && !caption){
-    showToast('Add an image or caption first');
+  if(!img && !vid && !caption){
+    showToast('Add media or a caption first');
+    return;
+  }
+
+  if(vid && window._cePendingMediaType==='video'){
+    const link = document.createElement('a');
+    link.download = 'brnno-post-'+Date.now()+'.mp4';
+    link.href = vid;
+    link.click();
+    if(caption){
+      navigator.clipboard.writeText(caption).then(function(){ showToast('✅ Video download started + caption copied'); }).catch(function(){ showToast('✅ Video download started'); });
+    } else showToast('✅ Video download started');
     return;
   }
 
@@ -14320,16 +14385,27 @@ function csSavePost(status){
   const campaignId = document.getElementById('cs-campaign')?.value||'';
   const utmLink = document.getElementById('cs-utm-result')?.textContent||'';
   const platforms = csGetSelectedPlatforms();
-  // Capture attached image
-  const imageData = window._cePendingImage || (_csEditPost && !_csEditPost._prefill ? csGetPosts().find(p=>p.id===_csEditPost?.id)?.imageData : null) || null;
+  const existing = _csEditPost && !_csEditPost._prefill ? csGetPosts().find(p=>p.id===_csEditPost.id) : null;
+  let imageData = null;
+  let videoData = null;
+  if(window._cePendingMediaType==='video'){
+    videoData = window._cePendingVideoData || existing?.videoData || null;
+    imageData = null;
+  }else if(window._cePendingMediaType==='image'){
+    imageData = window._cePendingImage || null;
+    videoData = null;
+  }else{
+    imageData = window._cePendingImage || existing?.imageData || null;
+    videoData = existing?.videoData || null;
+  }
 
   const posts = csGetPosts();
-  const existing = _csEditPost && !_csEditPost._prefill ? posts.find(p=>p.id===_csEditPost.id) : null;
 
   const post = {
     id: existing?.id || 'post_'+Date.now(),
     caption, scheduledDate, contentType, notes, campaignId, utmLink, platforms,
     imageData: imageData,
+    videoData: videoData,
     status: status||'draft',
     createdBy: currentRepEmail||'',
     createdAt: existing?.createdAt || new Date().toISOString(),
@@ -14353,6 +14429,15 @@ function csSavePost(status){
 function csQuickDownload(postId){
   const post = csGetPosts().find(p=>p.id===postId);
   if(!post) return;
+  if(post.videoData){
+    const link = document.createElement('a');
+    link.download = 'brnno-post-'+postId+'.mp4';
+    link.href = post.videoData;
+    link.click();
+    if(post.caption) navigator.clipboard.writeText(post.caption).catch(()=>{});
+    showToast('✅ Video downloaded + caption copied!');
+    return;
+  }
   if(post.imageData){
     const link = document.createElement('a');
     link.download = 'brnno-post-'+postId+'.jpg';
@@ -14635,6 +14720,9 @@ let _ceState = {
   format: '1x1', // 1x1 | 9x16 | 4x5 | 16x9
   history: [],
 };
+
+/** Max video size (bytes) to store as base64 on a post draft (localStorage is often ~5MB per site). */
+var CS_MAX_VIDEO_BASE64_BYTES = 4500000;
 
 const CE_FORMATS = {
   '1x1':  {w:1080, h:1080, label:'Square (1:1)', icon:'⬜'},
@@ -15085,7 +15173,12 @@ function ceVideoPlay(){
   const st=_ceState.videoTrimStart||0, en=_ceState.videoTrimEnd||v.duration;
   if(v.currentTime<st||v.currentTime>=en) v.currentTime=st;
   v.muted=_ceState.videoMuted||false; v.play();
-  if(window._bcpAudioEl&&!window._bcpMusicIsYoutube){try{window._bcpAudioEl.play();}catch(e){}}
+  if(window._bcpAudioEl&&!window._bcpMusicIsYoutube){
+    try{
+      window._bcpAudioEl.currentTime=window._bcpMusicTrimStart||0;
+      window._bcpAudioEl.play();
+    }catch(e){}
+  }
   const fT=function(s){const m=Math.floor(s/60);return m+':'+String(Math.floor(s%60)).padStart(2,'0');};
   _ceState._tw=setInterval(function(){
     if(!_ceState.image||!_ceState.isVideo){clearInterval(_ceState._tw);return;}
@@ -15146,6 +15239,157 @@ function ceLoadVideoUrl(){
   };
   video.onerror=function(){showToast('Could not load video. Try a direct .mp4 URL.');};
 }
+
+function bcpCloseExportDone(){
+  var o=document.getElementById('bcp-export-done-overlay');
+  if(window._bcpExportDoneRevokeUrl){
+    try{ URL.revokeObjectURL(window._bcpExportDoneRevokeUrl); }catch(e){}
+    window._bcpExportDoneRevokeUrl=null;
+  }
+  window._bcpExportDoneBlob=null;
+  window._bcpExportDoneMeta=null;
+  if(o) o.remove();
+}
+function bcpExportDoneDownloadAgain(){
+  var meta=window._bcpExportDoneMeta;
+  var blob=window._bcpExportDoneBlob;
+  if(!meta||!blob){ showToast('Export again from Creative+ if you need another copy.'); return; }
+  var url=URL.createObjectURL(blob);
+  var a=document.createElement('a');
+  a.href=url;
+  a.download=meta.fileName||'brnno-export';
+  a.click();
+  setTimeout(function(){ try{ URL.revokeObjectURL(url); }catch(e){} }, 2500);
+  showToast('Download started');
+}
+function bcpExportDoneTrySystemShare(){
+  var meta=window._bcpExportDoneMeta;
+  var blob=window._bcpExportDoneBlob;
+  if(!meta){ showToast('Nothing to share'); return; }
+  if(!navigator.share){ showToast('Open an app below or share from your Downloads folder.'); return; }
+  if(blob&&meta.kind==='video'){
+    var fv=new File([blob], meta.fileName||'brnno-export.webm', {type: meta.mime||'video/webm'});
+    if(navigator.canShare&&navigator.canShare({files:[fv]})){
+      navigator.share({files:[fv], title:'Brnno export', text:'Check out my video!'}).catch(function(){});
+      return;
+    }
+  }
+  if(blob&&meta.kind==='image'){
+    var fi=new File([blob], meta.fileName||'brnno-export.jpg', {type: meta.mime||'image/jpeg'});
+    if(navigator.canShare&&navigator.canShare({files:[fi]})){
+      navigator.share({files:[fi], title:'Brnno export'}).catch(function(){});
+      return;
+    }
+  }
+  navigator.share({title:'Brnno', text:'Check out my content!', url: window.location.href}).catch(function(){});
+}
+function bcpExportDoneNewProject(){
+  bcpCloseExportDone();
+  if(typeof _ceState!=='undefined'&&_ceState){
+    _ceState.texts=[]; _ceState.shapes=[]; _ceState.image=null; _ceState.isVideo=false;
+    _ceState.videoUrl=null; _ceState.videoFile=null;
+  }
+  csOpenCreativeEditor();
+}
+function bcpShowExportDone(meta){
+  bcpCloseExportDone();
+  window._bcpExportDoneMeta=meta;
+  if(meta.blob) window._bcpExportDoneBlob=meta.blob;
+  if(meta.previewUrl&&meta.kind==='video'&&String(meta.previewUrl).indexOf('blob:')===0)
+    window._bcpExportDoneRevokeUrl=meta.previewUrl;
+
+  var ov=document.createElement('div');
+  ov.id='bcp-export-done-overlay';
+  ov.style.cssText='position:fixed;inset:0;z-index:10050;background:rgba(12,10,8,.92);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);display:flex;align-items:center;justify-content:center;padding:max(12px,env(safe-area-inset-bottom));box-sizing:border-box;overflow-y:auto;';
+
+  var card=document.createElement('div');
+  card.style.cssText='width:100%;max-width:420px;background:linear-gradient(165deg,#1f1a16 0%,#141210 100%);border:1px solid rgba(232,168,56,.22);border-radius:20px;box-shadow:0 24px 64px rgba(0,0,0,.55);overflow:hidden;';
+
+  var header=document.createElement('div');
+  header.style.cssText='display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid rgba(255,255,255,.08);';
+  header.innerHTML='<button type="button" style="background:transparent;border:none;color:#ccc;font-size:22px;cursor:pointer;line-height:1;padding:4px;" onclick="bcpCloseExportDone()" aria-label="Back">←</button><div style="font-size:15px;font-weight:800;color:#f5f0e8;text-align:center;flex:1;">Saved to device</div><button type="button" style="background:transparent;border:none;color:#e8a838;font-size:14px;font-weight:700;cursor:pointer;padding:6px 8px;" onclick="bcpCloseExportDone()">Done</button>';
+
+  var body=document.createElement('div');
+  body.style.cssText='padding:16px 18px 22px;';
+
+  var prevWrap=document.createElement('div');
+  prevWrap.style.cssText='text-align:center;margin-bottom:14px;';
+  if(meta.kind==='video'){
+    var v=document.createElement('video');
+    v.src=meta.previewUrl;
+    v.controls=true;
+    v.playsInline=true;
+    v.setAttribute('playsinline','');
+    v.style.cssText='width:100%;max-height:min(42vh,320px);border-radius:14px;background:#000;';
+    prevWrap.appendChild(v);
+  }else{
+    var im=document.createElement('img');
+    im.src=meta.previewUrl;
+    im.alt='Exported image';
+    im.style.cssText='width:100%;max-height:min(42vh,320px);object-fit:contain;border-radius:14px;background:#111;';
+    prevWrap.appendChild(im);
+  }
+
+  var sysShare=document.createElement('button');
+  sysShare.type='button';
+  sysShare.textContent='Share…';
+  sysShare.style.cssText='width:100%;padding:14px 16px;border-radius:14px;border:none;background:linear-gradient(135deg,#faf7f2,#e8e0d8);color:#1a1512;font-size:15px;font-weight:800;cursor:pointer;margin-bottom:14px;box-shadow:0 4px 20px rgba(0,0,0,.25);';
+  sysShare.onclick=function(){ bcpExportDoneTrySystemShare(); };
+
+  var shareHint=document.createElement('div');
+  shareHint.textContent='Open a network to upload';
+  shareHint.style.cssText='font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:rgba(255,255,255,.4);margin-bottom:8px;text-align:center;';
+
+  var shareRow=document.createElement('div');
+  shareRow.style.cssText='display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-bottom:6px;';
+  var platforms=[
+    {label:'TikTok',url:'https://www.tiktok.com/upload'},
+    {label:'Instagram',url:'https://www.instagram.com/'},
+    {label:'LinkedIn',url:'https://www.linkedin.com/feed/'},
+    {label:'WhatsApp',url:'https://wa.me/?text='+encodeURIComponent('Check out my latest content!')},
+    {label:'Facebook',url:'https://www.facebook.com/'}
+  ];
+  platforms.forEach(function(p){
+    var btn=document.createElement('button');
+    btn.type='button';
+    btn.textContent=p.label;
+    btn.style.cssText='padding:9px 11px;border-radius:11px;border:1px solid rgba(255,255,255,.12);background:rgba(0,0,0,.28);color:#e8e4df;font-size:11px;font-weight:700;cursor:pointer;';
+    btn.onclick=function(){ window.open(p.url,'_blank','noopener,noreferrer'); };
+    shareRow.appendChild(btn);
+  });
+
+  var qaTitle=document.createElement('div');
+  qaTitle.textContent='Quick actions';
+  qaTitle.style.cssText='font-size:11px;font-weight:800;color:rgba(255,255,255,.45);margin:18px 0 10px;text-transform:uppercase;letter-spacing:.06em;';
+
+  var qaRow=document.createElement('div');
+  qaRow.style.cssText='display:flex;gap:8px;overflow-x:auto;padding-bottom:2px;-webkit-overflow-scrolling:touch;';
+  function qaBtn(label, fn){
+    var b=document.createElement('button');
+    b.type='button';
+    b.textContent=label;
+    b.style.cssText='flex:0 0 auto;padding:11px 13px;border-radius:12px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.06);color:#e8e4df;font-size:11px;font-weight:700;cursor:pointer;min-height:44px;';
+    b.onclick=fn;
+    return b;
+  }
+  qaRow.appendChild(qaBtn('New project', function(){ bcpExportDoneNewProject(); }));
+  qaRow.appendChild(qaBtn('Download again', function(){ bcpExportDoneDownloadAgain(); }));
+  qaRow.appendChild(qaBtn('Use in Post', function(){ bcpCloseExportDone(); ceUseInPost(); }));
+
+  body.appendChild(prevWrap);
+  body.appendChild(sysShare);
+  body.appendChild(shareHint);
+  body.appendChild(shareRow);
+  body.appendChild(qaTitle);
+  body.appendChild(qaRow);
+
+  card.appendChild(header);
+  card.appendChild(body);
+  ov.appendChild(card);
+  ov.onclick=function(e){ if(e.target===ov) bcpCloseExportDone(); };
+  document.body.appendChild(ov);
+}
+
 function ceExportVideo(){
   const v=_ceState.image; if(!v||!_ceState.isVideo){showToast('No video loaded');return;}
   const canvas=document.getElementById('ce-canvas'); if(!canvas){showToast('Canvas not ready');return;}
@@ -15215,16 +15459,34 @@ function ceExportVideo(){
     rec.onstop=function(){
       if(actx)try{actx.close();}catch(e){}
       var blob=new Blob(chunks,{type:'video/webm'});
+      var fn='brnno-video-'+Date.now()+'.webm';
       var url=URL.createObjectURL(blob);
-      var a=document.createElement('a'); a.href=url; a.download='brnno-video-'+Date.now()+'.webm'; a.click();
-      URL.revokeObjectURL(url); showToast('Video exported! Use the file on Instagram, TikTok, etc.');
+      var a=document.createElement('a'); a.href=url; a.download=fn; a.click();
+      bcpShowExportDone({kind:'video',blob:blob,previewUrl:url,fileName:fn,mime:'video/webm'});
     };
     v.currentTime=ts; v.muted=_ceState.videoMuted||false;
-    if(wantMusic&&musicEl){musicEl.currentTime=0; musicEl.play().catch(function(){});}
+    if(window._bcpMusicTrimIv){clearInterval(window._bcpMusicTrimIv); window._bcpMusicTrimIv=null;}
+    if(wantMusic&&musicEl){
+      var m0=window._bcpMusicTrimStart||0;
+      var m1=window._bcpMusicTrimEnd;
+      if(!m1||m1<=m0) m1=musicEl.duration||999;
+      if(isFinite(musicEl.duration)&&m1>musicEl.duration) m1=musicEl.duration;
+      musicEl.currentTime=m0;
+      musicEl.play().catch(function(){});
+      window._bcpMusicTrimIv=setInterval(function(){
+        if(!musicEl) return;
+        if(musicEl.currentTime>=m1-0.08) musicEl.currentTime=m0;
+      }, 50);
+    }
     setTimeout(function(){
       rec.start(100);
       v.play();
-      setTimeout(function(){v.pause(); if(musicEl)musicEl.pause(); rec.stop();},(dur*1000)+300);
+      setTimeout(function(){
+        v.pause();
+        if(musicEl) musicEl.pause();
+        if(window._bcpMusicTrimIv){clearInterval(window._bcpMusicTrimIv); window._bcpMusicTrimIv=null;}
+        rec.stop();
+      },(dur*1000)+300);
     },400);
   });
 }
@@ -15762,40 +16024,111 @@ function ceExportImage(){
     ceVideoPause();
     setTimeout(function(){
       const canvas=document.getElementById('ce-canvas');if(!canvas)return;
-      const lnk=document.createElement('a');lnk.download='brnno-frame-'+Date.now()+'.jpg';
-      lnk.href=canvas.toDataURL('image/jpeg',0.95);lnk.click();showToast('Frame exported!');
+      const dataUrl=canvas.toDataURL('image/jpeg',0.95);
+      const fn='brnno-frame-'+Date.now()+'.jpg';
+      const lnk=document.createElement('a');lnk.download=fn;lnk.href=dataUrl;lnk.click();
+      fetch(dataUrl).then(function(r){return r.blob();}).then(function(blob){
+        bcpShowExportDone({kind:'image',previewUrl:dataUrl,blob:blob,fileName:fn,mime:'image/jpeg'});
+      });
     },300);return;
   }
   const canvas=document.getElementById('ce-canvas');
   if(!canvas){showToast('Nothing to export');return;}
+  const dataUrl=canvas.toDataURL('image/jpeg',0.95);
+  const fn='brnno-content-'+Date.now()+'.jpg';
   const link=document.createElement('a');
-  link.download='brnno-content-'+Date.now()+'.jpg';
-  link.href=canvas.toDataURL('image/jpeg',0.95);
+  link.download=fn;
+  link.href=dataUrl;
   link.click();
-  showToast('Image downloaded!');
+  fetch(dataUrl).then(function(r){return r.blob();}).then(function(blob){
+    bcpShowExportDone({kind:'image',previewUrl:dataUrl,blob:blob,fileName:fn,mime:'image/jpeg'});
+  });
 }
 
 function ceUseInPost(){
   const canvas=document.getElementById('ce-canvas');
-  if(!canvas){showToast('Create an image first');return;}
-  const dataUrl=canvas.toDataURL('image/jpeg',0.92);
-  window._cePendingImage=dataUrl;
-  _csView='compose';
-  csOpenCompose(null);
-  // Show image preview in compose
-  setTimeout(()=>{
-    const area=document.getElementById('cs-content-area');
-    if(!area)return;
-    // Insert image preview at top of compose left panel
-    const preview=document.createElement('div');
-    preview.style.cssText='margin-bottom:16px;position:relative;';
-    preview.innerHTML='<div style="font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text2);margin-bottom:6px;">📎 Attached Image</div>'
-      +'<img src="'+dataUrl+'" style="width:100%;max-height:200px;object-fit:cover;border-radius:10px;border:1px solid var(--border);">'
-      +'<button onclick="window._cePendingImage=null;this.parentElement.remove()" style="position:absolute;top:28px;right:8px;background:rgba(0,0,0,.6);border:none;border-radius:50%;width:24px;height:24px;color:#fff;cursor:pointer;font-size:12px;">✕</button>';
-    const leftPanel=area.querySelector('textarea');
-    if(leftPanel) leftPanel.parentElement.parentElement.insertBefore(preview, leftPanel.parentElement);
-    showToast('✅ Image attached to post!');
-  },200);
+  if(!canvas){showToast('Add a photo or video in Creative+ first');return;}
+  window._cePendingImage=null;
+  window._cePendingVideoUrl=null;
+  window._cePendingVideoData=null;
+  window._cePendingMediaType=null;
+  function goCompose(){
+    _csView='compose';
+    csOpenCompose(null);
+    setTimeout(function(){ csInsertComposeMediaPreview&&csInsertComposeMediaPreview(); }, 80);
+  }
+  if(_ceState&&_ceState.isVideo&&_ceState.image){
+    var src=_ceState.videoUrl;
+    if(!src&&_ceState.videoFile) src=URL.createObjectURL(_ceState.videoFile);
+    if(!src){showToast('Video source not available');return;}
+    window._cePendingVideoUrl=src;
+    window._cePendingMediaType='video';
+    try{ window._cePendingVideoPoster=canvas.toDataURL('image/jpeg',0.88); }catch(e){}
+    if(_ceState.videoFile&&_ceState.videoFile.size<=CS_MAX_VIDEO_BASE64_BYTES){
+      var fr=new FileReader();
+      fr.onload=function(){
+        window._cePendingVideoData=fr.result;
+        showToast('✅ Video attached to post');
+        goCompose();
+      };
+      fr.onerror=function(){ window._cePendingVideoData=null; showToast('✅ Video attached (export WebM to keep a copy)'); goCompose(); };
+      showToast('Preparing video for post…');
+      fr.readAsDataURL(_ceState.videoFile);
+      return;
+    }
+    window._cePendingVideoData=null;
+    showToast('✅ Video attached — over ~4.5MB won’t save in the draft; export WebM from Creative+ as backup');
+    goCompose();
+    return;
+  }
+  window._cePendingImage=canvas.toDataURL('image/jpeg',0.92);
+  window._cePendingMediaType='image';
+  showToast('✅ Image attached to post!');
+  goCompose();
+}
+
+function csInsertComposeMediaPreview(){
+  var area=document.getElementById('cs-content-area');
+  if(!area) return;
+  var box=area.querySelector('div[style*="max-width:680px"]');
+  if(!box) return;
+  var old=document.getElementById('cs-compose-media-preview');
+  if(old) old.remove();
+  var vid=window._cePendingVideoUrl;
+  var img=window._cePendingImage;
+  var mtype=window._cePendingMediaType;
+  if(!vid && !img) return;
+  var wrap=document.createElement('div');
+  wrap.id='cs-compose-media-preview';
+  wrap.style.cssText='margin-bottom:16px;position:relative;';
+  if(mtype==='video' && vid){
+    wrap.innerHTML='<div style="font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text2);margin-bottom:6px;">📎 Attached Video</div>'
+      +'<video src="'+vid+'" controls playsinline preload="metadata" style="width:100%;max-height:min(420px,50vh);border-radius:10px;border:1px solid var(--border);background:#000;object-fit:contain;"></video>'
+      +'<button type="button" onclick="csClearComposeMedia()" style="position:absolute;top:28px;right:8px;background:rgba(0,0,0,.6);border:none;border-radius:50%;width:24px;height:24px;color:#fff;cursor:pointer;font-size:12px;">✕</button>';
+  } else if(img){
+    wrap.innerHTML='<div style="font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text2);margin-bottom:6px;">📎 Attached Image</div>'
+      +'<img src="'+img+'" alt="" style="width:100%;max-height:min(260px,42vh);object-fit:contain;border-radius:10px;border:1px solid var(--border);">'
+      +'<button type="button" onclick="csClearComposeMedia()" style="position:absolute;top:28px;right:8px;background:rgba(0,0,0,.6);border:none;border-radius:50%;width:24px;height:24px;color:#fff;cursor:pointer;font-size:12px;">✕</button>';
+  }
+  box.insertBefore(wrap, box.firstChild);
+}
+
+function csClearComposeMedia(){
+  window._cePendingImage=null;
+  window._cePendingVideoUrl=null;
+  window._cePendingVideoData=null;
+  window._cePendingMediaType=null;
+  var el=document.getElementById('cs-compose-media-preview');
+  if(el) el.remove();
+  var pp=document.getElementById('cs-preview-panel');
+  if(pp){
+    var p={};
+    if(_csEditPost && !_csEditPost._prefill && _csEditPost && _csEditPost.id){
+      var found=csGetPosts().find(function(x){ return x.id===_csEditPost.id; });
+      if(found) p=found;
+    }
+    pp.innerHTML=csPreviewHTML(p);
+  }
 }
 
 function ceRedrawFromState(){ ceInitCanvas(); }
@@ -18477,16 +18810,23 @@ function bcpSelectMusic(id,label){
     if(window._bcpAudioEl){try{window._bcpAudioEl.pause();}catch(e){} window._bcpAudioEl=null;}
     window._bcpMusicTrack="none";
     window._bcpMusicIsYoutube=false;
+    var mtr=document.getElementById("bcp-music-trim-row");if(mtr) mtr.style.display="none";
+    var ytc=document.getElementById("bcp-yt-trim-controls");if(ytc) ytc.style.display="none";
+    var yth=document.getElementById("bcp-yt-preview-host");if(yth){yth.style.display="none";yth.innerHTML="";}
     showToast("Music removed");
     return;
   }
   if(BCP_PRESET_MUSIC[id]){
     if(window._bcpAudioEl)try{window._bcpAudioEl.pause();}catch(e){}
+    var ytc2=document.getElementById("bcp-yt-trim-controls");if(ytc2) ytc2.style.display="none";
+    var yth2=document.getElementById("bcp-yt-preview-host");if(yth2){yth2.style.display="none";yth2.innerHTML="";}
+    window._bcpYoutubeId=null;
     var a=new Audio(BCP_PRESET_MUSIC[id]);
     a.loop=true;a.volume=0.42;
     window._bcpAudioEl=a;
     window._bcpMusicTrack=id;
     window._bcpMusicIsYoutube=false;
+    a.addEventListener("loadedmetadata", function(){ bcpInitMusicTrimUI(); });
     a.play().catch(function(){showToast("Tap Preview with music to hear (browser blocked autoplay)");});
     showToast(label+" — preview & export will include this track");
     return;
@@ -18505,33 +18845,71 @@ function bcpUploadMusic(evt){
   window._bcpMusicTrack="upload";
   window._bcpMusicIsYoutube=false;
   bcpHighlightMusicButtons("custom");
+  audio.addEventListener("loadedmetadata", function(){ bcpInitMusicTrimUI(); });
   audio.play().catch(function(){showToast("Audio loaded — press Play on the video bar to preview with music");});
   showToast("Audio file ready — plays with your video preview");
+}
+function bcpUpdateYoutubeEmbed(){
+  var id=window._bcpYoutubeId;if(!id)return;
+  var sEl=document.getElementById("bcp-yt-start"), eEl=document.getElementById("bcp-yt-end");
+  var s=sEl?parseFloat(sEl.value)||0:0;
+  var e=eEl?parseFloat(eEl.value)||60:60;
+  if(e<=s) e=s+1;
+  window._bcpYoutubeTrimStart=s;
+  window._bcpYoutubeTrimEnd=e;
+  var host=document.getElementById("bcp-yt-preview-host");
+  if(!host)return;
+  host.style.display="block";
+  host.innerHTML="<div style=\"font-size:9px;color:var(--text3);margin-bottom:6px;line-height:1.35;\">Preview plays only the selected range. To mix music into your exported video file, upload an MP3/WAV below (YouTube audio cannot be extracted in the browser).</div>"
+    +"<iframe width=\"100%\" height=\"120\" style=\"border:0;border-radius:8px;\" src=\"https://www.youtube.com/embed/"+id+"?rel=0&start="+Math.floor(s)+"&end="+Math.floor(e)+"\" allow=\"accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture\" allowfullscreen></iframe>";
+}
+function bcpSetMusicTrim(){
+  window._bcpMusicTrimStart=parseFloat(document.getElementById("bcp-music-tstart")?.value)||0;
+  window._bcpMusicTrimEnd=parseFloat(document.getElementById("bcp-music-tend")?.value)||0;
+}
+function bcpInitMusicTrimUI(){
+  var row=document.getElementById("bcp-music-trim-row");
+  var el=window._bcpAudioEl;
+  if(!row)return;
+  if(!el||!el.src||window._bcpMusicIsYoutube){row.style.display="none";return;}
+  row.style.display="block";
+  function apply(){
+    var d=el.duration||0;
+    if(!isFinite(d)||d<=0)return;
+    var s=document.getElementById("bcp-music-tstart"), e=document.getElementById("bcp-music-tend");
+    if(s){ s.max=d; if(!s.value||parseFloat(s.value)<0) s.value=0; window._bcpMusicTrimStart=parseFloat(s.value)||0; }
+    if(e){ e.max=d; if(!e.value||parseFloat(e.value)>d) e.value=Math.min(60,d).toFixed(1); window._bcpMusicTrimEnd=parseFloat(e.value)||d; }
+  }
+  if(el.readyState>=1) apply();
+  else el.addEventListener("loadedmetadata", apply, {once:true});
 }
 function bcpApplyAudioUrl(){
   var inp=document.getElementById("bcp-audio-url");if(!inp||!inp.value.trim()){showToast("Paste a direct .mp3/.wav link or a YouTube URL");return;}
   var raw=inp.value.trim();
   if(/youtube\.com|youtu\.be/i.test(raw)){
     window._bcpMusicIsYoutube=true;
-    var host=document.getElementById("bcp-yt-preview-host");
     var id=null;
     try{
       if(raw.indexOf("youtu.be/")>=0)id=raw.split("youtu.be/")[1].split(/[?&#]/)[0];
       else if(raw.indexOf("v=")>=0)id=raw.split("v=")[1].split(/[&#]/)[0];
     }catch(e){}
-    if(host&&id){
-      host.style.display="block";
-      host.innerHTML="<div style=\"font-size:9px;color:var(--text3);margin-bottom:6px;\">Listen below for reference. Browsers cannot pull YouTube audio into exports — upload an MP3/WAV or use a direct audio file URL for the mixed export.</div>"
-        +"<iframe width=\"100%\" height=\"72\" style=\"border:0;border-radius:8px;\" src=\"https://www.youtube.com/embed/"+id+"?rel=0\" allow=\"accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture\" allowfullscreen></iframe>";
-    }
+    if(!id){showToast("Could not read that YouTube link");return;}
+    window._bcpYoutubeId=id;
     if(window._bcpAudioEl)try{window._bcpAudioEl.pause();}catch(e){}
     window._bcpAudioEl=null;
     bcpHighlightMusicButtons("none");
-    showToast("YouTube: use for reference. For export audio, upload a file or direct MP3/WAV URL.");
+    var ytTrim=document.getElementById("bcp-yt-trim-controls");
+    if(ytTrim) ytTrim.style.display="block";
+    var mrow=document.getElementById("bcp-music-trim-row");
+    if(mrow) mrow.style.display="none";
+    bcpUpdateYoutubeEmbed();
+    showToast("YouTube preview ready — set start/end, then add MP3/WAV for export mix");
     return;
   }
   window._bcpMusicIsYoutube=false;
+  window._bcpYoutubeId=null;
   var h=document.getElementById("bcp-yt-preview-host");if(h){h.style.display="none";h.innerHTML="";}
+  var ytC=document.getElementById("bcp-yt-trim-controls");if(ytC) ytC.style.display="none";
   var u=raw;
   if(u.indexOf("http")!==0)u="https://"+u;
   if(window._bcpAudioEl)try{window._bcpAudioEl.pause();}catch(e){}
@@ -18546,6 +18924,7 @@ function bcpApplyAudioUrl(){
     window._bcpMusicTrack="url";
     bcpHighlightMusicButtons("custom");
     a.play().catch(function(){showToast("Audio loaded — play video to preview");});
+    bcpInitMusicTrimUI();
   };
 }
 function bcpPreviewMusicWithVideo(){
@@ -18555,7 +18934,7 @@ function bcpPreviewMusicWithVideo(){
   if(!m||!m.src||window._bcpMusicIsYoutube){showToast("Choose a preset, upload MP3/WAV, or paste a direct audio URL (not YouTube)");return;}
   v.currentTime=_ceState.videoTrimStart||0;
   v.muted=!!_ceState.videoMuted;
-  m.currentTime=0;
+  m.currentTime=window._bcpMusicTrimStart||0;
   m.play().catch(function(){});
   ceVideoPlay&&ceVideoPlay();
   showToast("Preview with music — use the bar to pause");
@@ -19199,7 +19578,7 @@ function bcpOpenStudioPanel(){
   if(document.getElementById("bcp-landing"))return;
   if(!document.getElementById("ce-canvas"))return;
   var ex=document.getElementById("bcp-studio-panel");if(ex)ex.remove();
-  var rp=document.querySelector("#cs-content-area > div > div:last-child");if(!rp)return;
+  var rp=document.getElementById("bcp-tools-scroll")||document.querySelector("#cs-content-area > div > div:last-child");if(!rp)return;
   var p=document.createElement("div");p.id="bcp-studio-panel";p.style.cssText="border-bottom:1px solid var(--border);";
   p.innerHTML=
     // Header
@@ -19255,7 +19634,7 @@ function bcpOpenStudioPanel(){
     +"<button onclick=\"bcpAutoCaption()\" style=\"flex:1;padding:7px;background:linear-gradient(135deg,#7c3aed,#4f46e5);color:#fff;border:none;border-radius:7px;font-size:11px;font-weight:700;cursor:pointer;\">AI Caption</button>"
     +"</div></div>"
     // Music
-    +"<div style=\"padding:12px;border-bottom:1px solid var(--border);\">"
+    +"<div id=\"bcp-music-block\" style=\"padding:12px;border-bottom:1px solid var(--border);\">"
     +"<div style=\"font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);margin-bottom:8px;\">Music Overlay</div>"
     +"<div style=\"display:flex;flex-direction:column;gap:5px;margin-bottom:8px;\">"
     +"<button onclick=\"bcpSelectMusic('hype1','Hype Beats')\" id=\"bcp-music-hype1\" style=\"padding:6px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;font-size:10px;cursor:pointer;color:var(--text2);text-align:left;font-weight:600;\">🔥 Hype Beats</button>"
@@ -19270,11 +19649,24 @@ function bcpOpenStudioPanel(){
     +"<button type=\"button\" onclick=\"bcpPreviewMusicWithVideo()\" style=\"flex:1;padding:7px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;font-size:10px;font-weight:700;cursor:pointer;color:var(--text2);\">Preview w/ video</button>"
     +"</div>"
     +"<div id=\"bcp-yt-preview-host\" style=\"display:none;margin-bottom:8px;\"></div>"
+    +"<div id=\"bcp-yt-trim-controls\" style=\"display:none;margin-bottom:8px;\">"
+    +"<div style=\"font-size:9px;color:var(--text3);margin-bottom:6px;line-height:1.35;\">YouTube clip (preview). Browsers cannot rip audio for export — upload an MP3/WAV below to mix into your file.</div>"
+    +"<div style=\"display:flex;gap:8px;align-items:center;flex-wrap:wrap;\">"
+    +"<label style=\"font-size:9px;color:var(--text2);\">Start (s)</label><input type=\"number\" id=\"bcp-yt-start\" min=\"0\" value=\"0\" step=\"1\" style=\"width:64px;padding:5px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:11px;\" onchange=\"bcpUpdateYoutubeEmbed()\">"
+    +"<label style=\"font-size:9px;color:var(--text2);\">End (s)</label><input type=\"number\" id=\"bcp-yt-end\" min=\"0\" value=\"60\" step=\"1\" style=\"width:64px;padding:5px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:11px;\" onchange=\"bcpUpdateYoutubeEmbed()\">"
+    +"</div></div>"
+    +"<div id=\"bcp-music-trim-row\" style=\"display:none;margin-top:4px;margin-bottom:4px;\">"
+    +"<div style=\"font-size:9px;color:var(--text3);margin-bottom:4px;\">Music trim (seconds, used in export)</div>"
+    +"<div style=\"display:flex;gap:8px;align-items:center;flex-wrap:wrap;\">"
+    +"<input type=\"number\" id=\"bcp-music-tstart\" min=\"0\" value=\"0\" step=\"0.1\" title=\"Start\" style=\"width:72px;padding:5px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:11px;\" onchange=\"bcpSetMusicTrim()\">"
+    +"<span style=\"font-size:10px;color:var(--text3);\">→</span>"
+    +"<input type=\"number\" id=\"bcp-music-tend\" min=\"0\" value=\"30\" step=\"0.1\" title=\"End\" style=\"width:72px;padding:5px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:11px;\" onchange=\"bcpSetMusicTrim()\">"
+    +"</div></div>"
     +"<label id=\"bcp-music-upload-label\" style=\"display:block;width:100%;padding:8px;background:var(--surface2);border:1px dashed var(--border);border-radius:7px;text-align:center;cursor:pointer;font-size:10px;color:var(--text3);\">"
     +"Upload MP3 / WAV<input type=\"file\" accept=\".mp3,.wav,.m4a,audio/mpeg,audio/wav,audio/*\" style=\"display:none\" onchange=\"bcpUploadMusic(event)\"></label>"
     +"</div>"
     // Export & Share + Analytics + Schedule
-    +"<div style=\"padding:12px;\">"
+    +"<div id=\"bcp-sec-publish\" style=\"padding:12px;\">"
     +"<div style=\"font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);margin-bottom:8px;\">Publish & Track</div>"
     +"<div style=\"display:grid;grid-template-columns:1fr 1fr;gap:6px;\">"
     +"<button onclick=\"ceExportImage()\" style=\"padding:8px 4px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;font-size:10px;font-weight:700;cursor:pointer;color:var(--text2);text-align:center;\">📸 Export Photo</button>"
@@ -19283,7 +19675,7 @@ function bcpOpenStudioPanel(){
     +"<button onclick=\"ceUseInPost()\" style=\"padding:8px 4px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;font-size:10px;font-weight:700;cursor:pointer;color:var(--text2);text-align:center;\">→ Use in Post</button>"
     +"<button onclick=\"bcpCopyCaption()\" style=\"padding:8px 4px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;font-size:10px;font-weight:700;cursor:pointer;color:var(--text2);text-align:center;\">📋 Copy Caption</button>"
     +"</div></div>";
-  rp.insertBefore(p,rp.firstChild);
+  rp.appendChild(p);
   setTimeout(function(){
     var t=window._bcpMusicTrack;
     if(!t||t==="none") bcpHighlightMusicButtons("none");
@@ -19355,64 +19747,99 @@ function bcpLandingLoad(evt){
   setTimeout(function(){ bcpShowFullEditor(); }, 800);
 }
 
+function bcpEditorTabSetActive(which){
+  ["edit","sound","creative","share"].forEach(function(k){
+    var b=document.getElementById("bcp-tab-btn-"+k);
+    if(!b)return;
+    if(k===which){
+      b.style.borderColor="#e8a838";
+      b.style.background="#e8a838";
+      b.style.color="#000";
+    }else{
+      b.style.borderColor="#333";
+      b.style.background="transparent";
+      b.style.color="#aaa";
+    }
+  });
+}
+function bcpEditorTab(which){
+  var map={edit:"bcp-sec-edit",sound:"bcp-music-block",creative:"bcp-studio-panel",share:"bcp-sec-publish"};
+  bcpEditorTabSetActive(which);
+  var id=map[which];
+  var el=id?document.getElementById(id):null;
+  if(el)el.scrollIntoView({behavior:"smooth",block:"start"});
+}
+
 function bcpShowFullEditor(){
-  // Restore original editor by using renderContentStudio which re-renders everything
-  // then calling ceInitCanvas
   var origView = _csView;
   _csView = "creative";
   var area = document.getElementById("cs-content-area");
   if(!area) return;
-  
-  // Rebuild the editor HTML
-  var fmt = CE_FORMATS[_ceState.format||"1x1"];
+
+  var fmtBtns=Object.entries(CE_FORMATS).map(function(e2){var k=e2[0],f=e2[1];return "<button onclick=\"ceSetFormat(\'"+k+"\')\" style=\"padding:4px 10px;border-radius:6px;font-size:11px;cursor:pointer;border:1px solid "+(_ceState.format===k?"#e8a838":"#333")+";background:"+(_ceState.format===k?"#e8a838":"transparent")+";color:"+(_ceState.format===k?"#000":"#ccc")+";\">"+f.icon+" "+f.label+"</button>";}).join("");
+
+  var quickTools=[
+    "<div style=\"flex-shrink:0;display:flex;align-items:center;gap:6px;padding:8px 10px;border-bottom:1px solid #2a2a2a;background:#161616;overflow-x:auto;-webkit-overflow-scrolling:touch;\">",
+    ceToolLabeled("select","🖱️","Select"),
+    ceToolLabeled("text","T","Text"),
+    ceToolLabeled("shape","⬛","Shape"),
+    "<span style=\"width:1px;height:32px;background:#333;flex-shrink:0;margin:0 2px;\"></span>",
+    "<button onclick=\"ceUndo()\" style=\"min-width:48px;height:46px;border-radius:8px;background:rgba(255,255,255,.04);border:1px solid #333;cursor:pointer;color:#ccc;font-size:10px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0;flex-shrink:0;\"><span style=\"font-size:15px;\">↩</span><span style=\"font-size:7px;color:#888;\">Undo</span></button>",
+    "<button onclick=\"ceRedo()\" style=\"min-width:48px;height:46px;border-radius:8px;background:rgba(255,255,255,.04);border:1px solid #333;cursor:pointer;color:#ccc;font-size:10px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0;flex-shrink:0;\"><span style=\"font-size:15px;\">↪</span><span style=\"font-size:7px;color:#888;\">Redo</span></button>",
+    "<span style=\"width:1px;height:32px;background:#333;flex-shrink:0;margin:0 2px;\"></span>",
+    "<button onclick=\"ceFitImage()\" style=\"min-width:48px;height:46px;border-radius:8px;background:rgba(255,255,255,.04);border:1px solid #333;cursor:pointer;color:#ccc;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0;flex-shrink:0;\"><span style=\"font-size:13px;\">⊡</span><span style=\"font-size:7px;color:#888;\">Fit</span></button>",
+    "<button onclick=\"ceFillImage()\" style=\"min-width:48px;height:46px;border-radius:8px;background:rgba(255,255,255,.04);border:1px solid #333;cursor:pointer;color:#ccc;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0;flex-shrink:0;\"><span style=\"font-size:13px;\">⊞</span><span style=\"font-size:7px;color:#888;\">Fill</span></button>",
+    "<button onclick=\"ceRotateImage(-90)\" style=\"min-width:48px;height:46px;border-radius:8px;background:rgba(255,255,255,.04);border:1px solid #333;cursor:pointer;color:#ccc;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0;flex-shrink:0;\"><span style=\"font-size:13px;\">↺</span><span style=\"font-size:7px;color:#888;\">Rot</span></button>",
+    "<button onclick=\"ceFlipImage()\" style=\"min-width:48px;height:46px;border-radius:8px;background:rgba(255,255,255,.04);border:1px solid #333;cursor:pointer;color:#ccc;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0;flex-shrink:0;\"><span style=\"font-size:13px;\">↔</span><span style=\"font-size:7px;color:#888;\">Flip</span></button>",
+    "</div>"
+  ].join("");
+
+  var tabBar=[
+    "<div id=\"bcp-editor-tab-bar\" style=\"flex-shrink:0;display:flex;gap:4px;padding:6px 10px 8px;border-bottom:1px solid #2a2a2a;background:#121212;overflow-x:auto;\">",
+    "<button type=\"button\" id=\"bcp-tab-btn-edit\" onclick=\"bcpEditorTab(\'edit\')\" style=\"padding:8px 14px;border-radius:999px;font-size:11px;font-weight:700;cursor:pointer;border:1px solid #e8a838;background:#e8a838;color:#000;flex-shrink:0;\">Edit</button>",
+    "<button type=\"button\" id=\"bcp-tab-btn-sound\" onclick=\"bcpEditorTab(\'sound\')\" style=\"padding:8px 14px;border-radius:999px;font-size:11px;font-weight:700;cursor:pointer;border:1px solid #333;background:transparent;color:#aaa;flex-shrink:0;\">Sound</button>",
+    "<button type=\"button\" id=\"bcp-tab-btn-creative\" onclick=\"bcpEditorTab(\'creative\')\" style=\"padding:8px 14px;border-radius:999px;font-size:11px;font-weight:700;cursor:pointer;border:1px solid #333;background:transparent;color:#aaa;flex-shrink:0;\">Creative+</button>",
+    "<button type=\"button\" id=\"bcp-tab-btn-share\" onclick=\"bcpEditorTab(\'share\')\" style=\"padding:8px 14px;border-radius:999px;font-size:11px;font-weight:700;cursor:pointer;border:1px solid #333;background:transparent;color:#aaa;flex-shrink:0;\">Share</button>",
+    "</div>"
+  ].join("");
+
   area.innerHTML = [
-    "<div style=\"display:flex;height:100%;min-height:0;overflow:hidden;background:#0a0a0a;border-radius:0;\">",
-      // Left toolbar (inside dark studio strip)
-      "<div style=\"width:64px;flex-shrink:0;background:#121212;border-right:1px solid #2a2a2a;display:flex;flex-direction:column;align-items:center;padding:8px 0;gap:3px;overflow-y:auto;\">",
-        ceToolLabeled("select","🖱️","Select"),
-        ceToolLabeled("text","T","Text"),
-        ceToolLabeled("shape","⬛","Shape"),
-        "<div style=\"width:40px;height:1px;background:#333;margin:4px 0;\"></div>",
-        "<button onclick=\"ceUndo()\" style=\"width:50px;height:42px;border-radius:8px;background:rgba(255,255,255,.04);border:1px solid #333;cursor:pointer;color:#ccc;font-size:11px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;\"><span style=\"font-size:16px;\">↩</span><span style=\"font-size:8px;color:#888;\">Undo</span></button>",
-        "<button onclick=\"ceRedo()\" style=\"width:50px;height:42px;border-radius:8px;background:rgba(255,255,255,.04);border:1px solid #333;cursor:pointer;color:#ccc;font-size:11px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;\"><span style=\"font-size:16px;\">↪</span><span style=\"font-size:8px;color:#888;\">Redo</span></button>",
-        "<div style=\"width:40px;height:1px;background:#333;margin:4px 0;\"></div>",
-        "<button onclick=\"ceFitImage()\" style=\"width:50px;height:42px;border-radius:8px;background:rgba(255,255,255,.04);border:1px solid #333;cursor:pointer;color:#ccc;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;\"><span style=\"font-size:14px;\">⊡</span><span style=\"font-size:8px;color:#888;\">Fit</span></button>",
-        "<button onclick=\"ceFillImage()\" style=\"width:50px;height:42px;border-radius:8px;background:rgba(255,255,255,.04);border:1px solid #333;cursor:pointer;color:#ccc;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;\"><span style=\"font-size:14px;\">⊞</span><span style=\"font-size:8px;color:#888;\">Fill</span></button>",
-        "<button onclick=\"ceRotateImage(-90)\" style=\"width:50px;height:42px;border-radius:8px;background:rgba(255,255,255,.04);border:1px solid #333;cursor:pointer;color:#ccc;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;\"><span style=\"font-size:14px;\">↺</span><span style=\"font-size:8px;color:#888;\">Rotate</span></button>",
-        "<button onclick=\"ceFlipImage()\" style=\"width:50px;height:42px;border-radius:8px;background:rgba(255,255,255,.04);border:1px solid #333;cursor:pointer;color:#ccc;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;\"><span style=\"font-size:14px;\">↔</span><span style=\"font-size:8px;color:#888;\">Flip</span></button>",
+    "<div id=\"bcp-editor-layout\" style=\"display:flex;flex-direction:column;height:100%;min-height:0;max-height:100%;overflow:hidden;background:#0a0a0a;border-radius:0;\">",
+      "<div style=\"flex-shrink:0;padding:8px 12px;border-bottom:1px solid #2a2a2a;display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#141414;\">",
+        "<span style=\"font-size:10px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:.08em;\">Format</span>",
+        fmtBtns,
+        "<div style=\"flex:1;min-width:8px;\"></div>",
+        "<button onclick=\"ceExportImage()\" style=\"padding:6px 14px;background:#22c55e;color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;\">⬇️ Export</button>",
+        "<button onclick=\"ceUseInPost()\" style=\"padding:6px 14px;background:#1a4a7c;color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;\">→ Use in Post</button>",
+        "<button onclick=\"csOpenCreativeEditor()\" style=\"padding:6px 12px;background:#222;border:1px solid #333;border-radius:7px;font-size:11px;cursor:pointer;color:#ccc;\">← Back</button>",
       "</div>",
-      // Canvas area (center column — dark workspace)
-      "<div style=\"flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden;background:#0a0a0a;\">",
-        // Format bar
-        "<div style=\"padding:8px 12px;border-bottom:1px solid #2a2a2a;display:flex;align-items:center;gap:8px;flex-shrink:0;background:#141414;\">",
-          "<span style=\"font-size:10px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:.08em;\">Format:</span>",
-          Object.entries(CE_FORMATS).map(function(e2){var k=e2[0],f=e2[1];return "<button onclick=\"ceSetFormat(\'"+k+"\')\" style=\"padding:4px 10px;border-radius:6px;font-size:11px;cursor:pointer;border:1px solid "+(_ceState.format===k?"#e8a838":"#333")+";background:"+(_ceState.format===k?"#e8a838":"transparent")+";color:"+(_ceState.format===k?"#000":"#ccc")+";\">"+f.icon+" "+f.label+"</button>";}).join(""),
-          "<div style=\"flex:1;\"></div>",
-          "<button onclick=\"ceExportImage()\" style=\"padding:6px 14px;background:#22c55e;color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;\">⬇️ Export</button>",
-          "<button onclick=\"ceUseInPost()\" style=\"padding:6px 14px;background:#1a4a7c;color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;\">→ Use in Post</button>",
-          "<button onclick=\"csOpenCreativeEditor()\" style=\"padding:6px 12px;background:#222;border:1px solid #333;border-radius:7px;font-size:11px;cursor:pointer;color:#ccc;\">← Back</button>",
-        "</div>",
-        // Canvas container — fills remaining height, preview centered
-        "<div id=\"ce-canvas-wrap\" style=\"flex:1;min-height:0;overflow:hidden;display:flex;align-items:center;justify-content:center;background:#050505;position:relative;\">",
+      "<div id=\"ce-preview-stack\" style=\"flex:1 1 44%;min-height:140px;display:flex;flex-direction:column;min-height:0;overflow:hidden;background:#050505;\">",
+        "<div id=\"ce-canvas-wrap\" style=\"flex:1 1 auto;min-height:0;overflow:hidden;display:flex;align-items:flex-start;justify-content:center;background:#050505;position:relative;\">",
           "<canvas id=\"ce-canvas\" style=\"box-shadow:0 12px 48px rgba(0,0,0,.75);cursor:crosshair;max-width:100%;max-height:100%;object-fit:contain;\"></canvas>",
         "</div>",
       "</div>",
-      // Right panel (dark rail — matches Photoshop-style side docks)
-      "<div style=\"width:260px;flex-shrink:0;border-left:1px solid #2a2a2a;background:#121212;overflow-y:auto;display:flex;flex-direction:column;min-height:0;\">",
-        ceRightPanelHTML(),
+      "<div id=\"bcp-bottom-tools\" style=\"flex:1 1 56%;min-height:160px;max-height:min(58vh,720px);display:flex;flex-direction:column;border-top:2px solid #252525;background:#121212;min-height:0;\">",
+        quickTools,
+        tabBar,
+        "<div id=\"bcp-tools-scroll\" style=\"flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;background:#121212;\">",
+          "<div id=\"bcp-sec-edit\">",
+            ceRightPanelHTML(),
+          "</div>",
+        "</div>",
       "</div>",
     "</div>"
   ].join("");
 
-  // Small delay to ensure DOM has rendered before measuring wrap size
   setTimeout(function(){
     ceInitCanvas();
     ceInitKeyboard && ceInitKeyboard();
-    // Show video controls if video is loaded
     if(_ceState && _ceState.isVideo && _ceState.image) {
       setTimeout(function(){ ceShowVideoPanel && ceShowVideoPanel(); }, 80);
     }
-    setTimeout(function(){ bcpOpenStudioPanel && bcpOpenStudioPanel(); }, 100);
+    setTimeout(function(){
+      bcpOpenStudioPanel && bcpOpenStudioPanel();
+      bcpEditorTabSetActive("edit");
+    }, 100);
   }, 50);
 }
 
