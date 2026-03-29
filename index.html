@@ -21830,7 +21830,6 @@ function closeMobileSettings(){
   document.querySelectorAll(".mob-nav-btn").forEach(b=>b.classList.remove("active"));
 }
 document.addEventListener("DOMContentLoaded",function(){
-  const origSetPage=var origSetPage=window.setPage;
   window.setPage;
   window.setPage=function(page,el){
     origSetPage(page,el);
