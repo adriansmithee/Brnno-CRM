@@ -13840,7 +13840,7 @@ function renderContentStudio(){
       + '</div>'
     + '</div>'
     // Content area
-    + '<div id="cs-content-area" style="flex:1;overflow:hidden;">'
+    + '<div id="cs-content-area" style="flex:1;overflow:hidden;min-height:0;">'
     + '</div>'
   + '</div>';
 
@@ -14843,9 +14843,9 @@ function ceTool(mode, icon, label, activeExpr){
 }
 function ceToolLabeled(mode, icon, label){
   return '<button onclick="ceSetMode(\''+mode+'\')" title="'+label+'" data-ce-tool="'+mode+'" '
-    + 'style="width:50px;height:50px;border-radius:8px;background:none;border:1px solid var(--border);cursor:pointer;color:var(--text2);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;">'
+    + 'style="width:50px;height:50px;border-radius:8px;background:rgba(255,255,255,.04);border:1px solid #333;cursor:pointer;color:#ccc;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;">'
     + '<span style="font-size:'+(mode==='text'?'16':'18')+'px;font-weight:bold;line-height:1;">'+icon+'</span>'
-    + '<span style="font-size:8px;color:var(--text3);font-weight:600;">'+label+'</span>'
+    + '<span style="font-size:8px;color:#888;font-weight:600;">'+label+'</span>'
     + '</button>';
 }
 function ceSlider(label, id, min, max, val, oninput, step){
@@ -14903,8 +14903,9 @@ function ceSetMode(mode){
   if(canvas) canvas.style.cursor = mode==='text'?'text':mode==='shape'?'crosshair':'default';
   // Update toolbar buttons
   document.querySelectorAll('[data-ce-tool]').forEach(b => {
-    b.style.background = b.dataset.ceTool===mode ? 'rgba(26,58,107,.2)' : 'none';
-    b.style.borderColor = b.dataset.ceTool===mode ? 'var(--accent)' : 'var(--border)';
+    const on = b.dataset.ceTool===mode;
+    b.style.background = on ? 'rgba(232,168,56,.15)' : 'rgba(255,255,255,.04)';
+    b.style.borderColor = on ? '#e8a838' : '#333';
   });
 }
 
@@ -14976,8 +14977,6 @@ function ceLoadVideo(file){
     function drawFrame(){ if(_ceState.image===video){ ceRedraw(); requestAnimationFrame(drawFrame); } }
     video.play().then(drawFrame).catch(()=>{ video.currentTime=0.1; ceRedraw(); });
     ceShowVideoPanel();
-    // Auto-fill canvas on load
-    if(typeof ceFillImage === 'function') setTimeout(ceFillImage, 200);
     showToast('Video loaded! Trim, overlay text, then export.');
   };
 }
@@ -15043,7 +15042,7 @@ function ceShowVideoPanel(){
       var pth=document.getElementById('ce-bthumb');if(pth)pth.style.left=pct+'%';
       if(cu){var m=Math.floor(v.currentTime/60);cu.textContent=m+':'+String(Math.floor(v.currentTime%60)).padStart(2,'0');}
       if(pb)pb.textContent=v.paused?'▶':'⏸';
-      if(_ceState.videoTrimEnd&&v.currentTime>=_ceState.videoTrimEnd)v.pause();
+      if(_ceState.videoTrimEnd&&v.currentTime>=_ceState.videoTrimEnd){v.pause();if(window._bcpAudioEl)try{window._bcpAudioEl.pause();}catch(e){}}
     },100);
   }
   const ex = document.getElementById('ce-video-panel'); if(ex) ex.remove();
@@ -15086,6 +15085,7 @@ function ceVideoPlay(){
   const st=_ceState.videoTrimStart||0, en=_ceState.videoTrimEnd||v.duration;
   if(v.currentTime<st||v.currentTime>=en) v.currentTime=st;
   v.muted=_ceState.videoMuted||false; v.play();
+  if(window._bcpAudioEl&&!window._bcpMusicIsYoutube){try{window._bcpAudioEl.play();}catch(e){}}
   const fT=function(s){const m=Math.floor(s/60);return m+':'+String(Math.floor(s%60)).padStart(2,'0');};
   _ceState._tw=setInterval(function(){
     if(!_ceState.image||!_ceState.isVideo){clearInterval(_ceState._tw);return;}
@@ -15094,7 +15094,7 @@ function ceVideoPlay(){
     if(_ceState.image.currentTime>=(_ceState.videoTrimEnd||_ceState.image.duration)){_ceState.image.pause();clearInterval(_ceState._tw);}
   },100);
 }
-function ceVideoPause(){ const v=_ceState.image; if(v&&_ceState.isVideo)v.pause(); if(_ceState._tw)clearInterval(_ceState._tw); }
+function ceVideoPause(){ const v=_ceState.image; if(v&&_ceState.isVideo)v.pause(); if(_ceState._tw)clearInterval(_ceState._tw); if(window._bcpAudioEl)try{window._bcpAudioEl.pause();}catch(e){} }
 function ceSetTrimStart(val){
   val=parseFloat(val); _ceState.videoTrimStart=val;
   const fT=function(s){const m=Math.floor(s/60);return m+':'+String(Math.floor(s%60)).padStart(2,'0');};
@@ -15153,19 +15153,80 @@ function ceExportVideo(){
   if(dur<=0){showToast('Invalid trim range');return;}
   if(dur>120){showToast('Max export is 2 minutes');return;}
   showToast('Exporting video — please wait...');
-  const stream=canvas.captureStream(30);
-  if(!_ceState.videoMuted&&v.captureStream){try{const vs=v.captureStream();vs.getAudioTracks().forEach(function(t){stream.addTrack(t);});}catch(e){}}
   const mime=MediaRecorder.isTypeSupported('video/webm;codecs=vp9')?'video/webm;codecs=vp9':'video/webm';
-  const rec=new MediaRecorder(stream,{mimeType:mime,videoBitsPerSecond:8000000}); const chunks=[];
-  rec.ondataavailable=function(e){if(e.data.size>0)chunks.push(e.data);};
-  rec.onstop=function(){
-    const blob=new Blob(chunks,{type:'video/webm'});
-    const url=URL.createObjectURL(blob);
-    const a=document.createElement('a'); a.href=url; a.download='brnno-video-'+Date.now()+'.webm'; a.click();
-    URL.revokeObjectURL(url); showToast('Video exported!');
-  };
-  v.currentTime=ts; v.muted=_ceState.videoMuted||false;
-  setTimeout(function(){rec.start(100);v.play();setTimeout(function(){v.pause();rec.stop();},(dur*1000)+300);},400);
+  const musicEl=window._bcpAudioEl;
+  const wantMusic=musicEl&&musicEl.src;
+  const Ctx=window.AudioContext||window.webkitAudioContext;
+
+  function buildOutputStream(cb){
+    const vStream=canvas.captureStream(30);
+    if(!wantMusic){
+      if(!_ceState.videoMuted&&v.captureStream){try{v.captureStream().getAudioTracks().forEach(function(t){vStream.addTrack(t);});}catch(e){}}
+      cb(vStream,null);
+      return;
+    }
+    if(!Ctx){
+      showToast('Music mix needs Web Audio — exporting picture + original clip audio only.');
+      if(!_ceState.videoMuted&&v.captureStream){try{v.captureStream().getAudioTracks().forEach(function(t){vStream.addTrack(t);});}catch(e){}}
+      cb(vStream,null);
+      return;
+    }
+    var actx=new Ctx();
+    var dest=actx.createMediaStreamDestination();
+    try{
+      if(v.captureStream){
+        var vs=v.captureStream();
+        var vSrc=actx.createMediaStreamSource(vs);
+        var gV=actx.createGain();
+        gV.gain.value=_ceState.videoMuted?0:1;
+        vSrc.connect(gV).connect(dest);
+      }
+    }catch(e1){}
+    try{
+      if(musicEl.captureStream){
+        musicEl.currentTime=0;
+        var ms=musicEl.captureStream();
+        var mSrc=actx.createMediaStreamSource(ms);
+        var gM=actx.createGain();
+        gM.gain.value=0.38;
+        mSrc.connect(gM).connect(dest);
+      }else if(musicEl){
+        var elSrc=actx.createMediaElementSource(musicEl);
+        var g2=actx.createGain();
+        g2.gain.value=0.38;
+        elSrc.connect(g2).connect(dest);
+      }
+    }catch(e2){
+      if(!_ceState.videoMuted&&v.captureStream){try{v.captureStream().getAudioTracks().forEach(function(t){vStream.addTrack(t);});}catch(e3){}}
+      actx.close();
+      cb(vStream,null);
+      return;
+    }
+    var out=new MediaStream();
+    vStream.getVideoTracks().forEach(function(t){out.addTrack(t);});
+    dest.stream.getAudioTracks().forEach(function(t){out.addTrack(t);});
+    actx.resume().then(function(){cb(out,actx);}).catch(function(){cb(out,actx);});
+  }
+
+  buildOutputStream(function(stream,actx){
+    var chunks=[];
+    var rec=new MediaRecorder(stream,{mimeType:mime,videoBitsPerSecond:8000000});
+    rec.ondataavailable=function(e){if(e.data.size>0)chunks.push(e.data);};
+    rec.onstop=function(){
+      if(actx)try{actx.close();}catch(e){}
+      var blob=new Blob(chunks,{type:'video/webm'});
+      var url=URL.createObjectURL(blob);
+      var a=document.createElement('a'); a.href=url; a.download='brnno-video-'+Date.now()+'.webm'; a.click();
+      URL.revokeObjectURL(url); showToast('Video exported! Use the file on Instagram, TikTok, etc.');
+    };
+    v.currentTime=ts; v.muted=_ceState.videoMuted||false;
+    if(wantMusic&&musicEl){musicEl.currentTime=0; musicEl.play().catch(function(){});}
+    setTimeout(function(){
+      rec.start(100);
+      v.play();
+      setTimeout(function(){v.pause(); if(musicEl)musicEl.pause(); rec.stop();},(dur*1000)+300);
+    },400);
+  });
 }
 
 function ceRedraw(){
@@ -18368,59 +18429,6 @@ function bcpApplyTemplate(id){
   ceRedraw();showToast("Template applied! Upload a photo to complete it.");
 }
 
-function bcpOpenStudioPanel(){
-  // Don't show on landing screen
-  if(document.getElementById("bcp-landing"))return;
-  var ex=document.getElementById("bcp-studio-panel");if(ex)ex.remove();
-  var rp=document.querySelector("#cs-content-area > div > div:last-child");
-  // Make sure we're in the editor not the landing
-  if(!rp||rp.id==="bcp-landing"||!document.getElementById("ce-canvas"))return;
-  var p=document.createElement("div");p.id="bcp-studio-panel";p.style.cssText="border-bottom:1px solid var(--border);";
-  p.innerHTML="<div style=\"padding:12px;border-bottom:1px solid var(--border);background:linear-gradient(135deg,rgba(232,168,56,.08),transparent);\">"
-    +"<div style=\"display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;\">"
-    +"<div style=\"font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--gold2);\">&nbsp;Brnno Creative+</div>"
-    +"<button onclick=\"bcpOpenBrandKit()\" style=\"font-size:9px;padding:3px 8px;background:rgba(232,168,56,.15);border:1px solid rgba(232,168,56,.3);border-radius:20px;cursor:pointer;color:var(--gold2);font-weight:700;\">Brand Kit</button></div>"
-    +"<button onclick=\"bcpOpenTemplates()\" style=\"width:100%;padding:9px;background:linear-gradient(135deg,#e8a838,#d4901f);color:#000;border:none;border-radius:9px;font-size:12px;font-weight:800;cursor:pointer;margin-bottom:6px;\">Open Template Library</button>"
-    +"</div>"
-    +"<div style=\"padding:12px;border-bottom:1px solid var(--border);\">"
-    +"<div style=\"font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);margin-bottom:8px;\">Text Animation</div>"
-    +"<div style=\"display:flex;flex-wrap:wrap;gap:5px;\">"
-    +"<button onclick=\"bcpSetAnim('none')\" id=\"bcp-anim-none\" style=\"padding:4px 9px;border-radius:20px;font-size:10px;font-weight:600;cursor:pointer;border:1px solid var(--gold2);background:var(--gold2);color:#000;\">None</button>"
-    +"<button onclick=\"bcpSetAnim('fadein')\" id=\"bcp-anim-fadein\" style=\"padding:4px 9px;border-radius:20px;font-size:10px;font-weight:600;cursor:pointer;border:1px solid var(--border);background:var(--surface2);color:var(--text2);\">Fade In</button>"
-    +"<button onclick=\"bcpSetAnim('slideup')\" id=\"bcp-anim-slideup\" style=\"padding:4px 9px;border-radius:20px;font-size:10px;font-weight:600;cursor:pointer;border:1px solid var(--border);background:var(--surface2);color:var(--text2);\">Slide Up</button>"
-    +"<button onclick=\"bcpSetAnim('glow')\" id=\"bcp-anim-glow\" style=\"padding:4px 9px;border-radius:20px;font-size:10px;font-weight:600;cursor:pointer;border:1px solid var(--border);background:var(--surface2);color:var(--text2);\">Glow</button>"
-    +"<button onclick=\"bcpSetAnim('bounce')\" id=\"bcp-anim-bounce\" style=\"padding:4px 9px;border-radius:20px;font-size:10px;font-weight:600;cursor:pointer;border:1px solid var(--border);background:var(--surface2);color:var(--text2);\">Bounce</button>"
-    +"<button onclick=\"bcpSetAnim('typewriter')\" id=\"bcp-anim-typewriter\" style=\"padding:4px 9px;border-radius:20px;font-size:10px;font-weight:600;cursor:pointer;border:1px solid var(--border);background:var(--surface2);color:var(--text2);\">Typewriter</button>"
-    +"</div></div>"
-    +"<div style=\"padding:12px;border-bottom:1px solid var(--border);\">"
-    +"<div style=\"font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);margin-bottom:8px;\">Auto-Caption</div>"
-    +"<textarea id=\"bcp-caption-text\" placeholder=\"Type caption — overlays on video/photo...\" rows=\"2\" style=\"width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px;color:var(--text);font-size:11px;outline:none;resize:none;margin-bottom:6px;\"></textarea>"
-    +"<div style=\"display:flex;gap:6px;\">"
-    +"<button onclick=\"bcpApplyCaption()\" style=\"flex:1;padding:7px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;font-size:11px;font-weight:700;cursor:pointer;color:var(--text2);\">&nbsp;Add to Canvas</button>"
-    +"<button onclick=\"bcpAutoCaption()\" style=\"flex:1;padding:7px;background:linear-gradient(135deg,#7c3aed,#4f46e5);color:#fff;border:none;border-radius:7px;font-size:11px;font-weight:700;cursor:pointer;\">AI Caption</button>"
-    +"</div></div>"
-    +"<div style=\"padding:12px;border-bottom:1px solid var(--border);\">"
-    +"<div style=\"font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);margin-bottom:8px;\">Music Overlay</div>"
-    +"<div style=\"display:flex;flex-direction:column;gap:5px;margin-bottom:8px;\">"
-    +"<button onclick=\"bcpSelectMusic('hype1','Hype Beats')\" id=\"bcp-music-hype1\" style=\"padding:7px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;font-size:11px;cursor:pointer;color:var(--text2);text-align:left;font-weight:600;\">🔥 Hype Beats</button>"
-    +"<button onclick=\"bcpSelectMusic('chill1','Chill Vibes')\" id=\"bcp-music-chill1\" style=\"padding:7px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;font-size:11px;cursor:pointer;color:var(--text2);text-align:left;font-weight:600;\">😎 Chill Vibes</button>"
-    +"<button onclick=\"bcpSelectMusic('epic1','Epic Rise')\" id=\"bcp-music-epic1\" style=\"padding:7px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;font-size:11px;cursor:pointer;color:var(--text2);text-align:left;font-weight:600;\">🏆 Epic Rise</button>"
-    +"<button onclick=\"bcpSelectMusic('none','No Music')\" id=\"bcp-music-none\" style=\"padding:7px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;font-size:11px;cursor:pointer;color:var(--text2);text-align:left;font-weight:600;\">🔇 No Music</button>"
-    +"</div>"
-    +"<label style=\"display:block;width:100%;padding:7px;background:var(--surface2);border:1px dashed var(--border);border-radius:7px;text-align:center;cursor:pointer;font-size:10px;color:var(--text3);\">"
-    +"Upload your own audio<input type=\"file\" accept=\"audio/*\" style=\"display:none\" onchange=\"bcpUploadMusic(event)\"></label>"
-    +"</div>"
-    +"<div style=\"padding:12px;\">"
-    +"<div style=\"font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);margin-bottom:8px;\">Export & Share</div>"
-    +"<div style=\"display:grid;grid-template-columns:1fr 1fr;gap:6px;\">"
-    +"<button onclick=\"ceExportImage()\" style=\"padding:8px 4px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;font-size:10px;font-weight:700;cursor:pointer;color:var(--text2);\">&nbsp;Photo/Frame</button>"
-    +"<button onclick=\"typeof ceExportVideo==='function'?ceExportVideo():showToast('Load a video first')\" style=\"padding:8px 4px;background:linear-gradient(135deg,#7c3aed,#4f46e5);color:#fff;border:none;border-radius:7px;font-size:10px;font-weight:700;cursor:pointer;\">&nbsp;Video</button>"
-    +"<button onclick=\"bcpCopyCaption()\" style=\"padding:8px 4px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;font-size:10px;font-weight:700;cursor:pointer;color:var(--text2);\">&nbsp;Copy Caption</button>"
-    +"<button onclick=\"ceUseInPost()\" style=\"padding:8px 4px;background:linear-gradient(135deg,#059669,#047857);color:#fff;border:none;border-radius:7px;font-size:10px;font-weight:700;cursor:pointer;\">&nbsp;Use in Post</button>"
-    +"</div></div>";
-  rp.insertBefore(p,rp.firstChild);
-}
-
 window._bcpAnimEffect="none";
 function bcpSetAnim(key){
   window._bcpAnimEffect=key;
@@ -18443,18 +18451,114 @@ function bcpAutoCaption(){
   var inp=document.getElementById("bcp-caption-text");if(inp){inp.value=pick;inp.style.borderColor="var(--gold2)";setTimeout(function(){inp.style.borderColor="";},1500);}
   showToast("AI caption generated!");
 }
+var BCP_PRESET_MUSIC={
+  hype1:"https://assets.mixkit.co/music/preview/mixkit-tech-house-vibes-130.mp3",
+  chill1:"https://assets.mixkit.co/music/preview/mixkit-driving-ambition-32.mp3",
+  epic1:"https://assets.mixkit.co/music/preview/mixkit-happy-vibes-482.mp3"
+};
+function bcpHighlightMusicButtons(activeId){
+  ["hype1","chill1","epic1","none"].forEach(function(k){
+    var b=document.getElementById("bcp-music-"+k);if(!b)return;
+    var on=k===activeId;
+    b.style.borderColor=on?"var(--gold2)":"var(--border)";
+    b.style.background=on?"rgba(232,168,56,.12)":"var(--surface2)";
+    b.style.color=on?"var(--gold2)":"var(--text2)";
+  });
+  var ul=document.getElementById("bcp-music-upload-label");
+  if(ul){
+    var onC=activeId==="custom";
+    ul.style.borderColor=onC?"var(--gold2)":"var(--border)";
+    ul.style.background=onC?"rgba(232,168,56,.08)":"var(--surface2)";
+  }
+}
 function bcpSelectMusic(id,label){
-  ["hype1","chill1","epic1","none"].forEach(function(k){var b=document.getElementById("bcp-music-"+k);if(b){b.style.borderColor="var(--border)";b.style.background="var(--surface2)";b.style.color="var(--text2)";}});
-  var btn=document.getElementById("bcp-music-"+id);if(btn){btn.style.borderColor="var(--gold2)";btn.style.background="rgba(232,168,56,.1)";btn.style.color="var(--gold2)";}
-  if(id==="none"){if(window._bcpAudioEl){window._bcpAudioEl.pause();window._bcpAudioEl=null;}showToast("Music removed");return;}
-  window._bcpMusicTrack=id;showToast(label+" selected — will mix on video export");
+  bcpHighlightMusicButtons(id);
+  if(id==="none"){
+    if(window._bcpAudioEl){try{window._bcpAudioEl.pause();}catch(e){} window._bcpAudioEl=null;}
+    window._bcpMusicTrack="none";
+    window._bcpMusicIsYoutube=false;
+    showToast("Music removed");
+    return;
+  }
+  if(BCP_PRESET_MUSIC[id]){
+    if(window._bcpAudioEl)try{window._bcpAudioEl.pause();}catch(e){}
+    var a=new Audio(BCP_PRESET_MUSIC[id]);
+    a.loop=true;a.volume=0.42;
+    window._bcpAudioEl=a;
+    window._bcpMusicTrack=id;
+    window._bcpMusicIsYoutube=false;
+    a.play().catch(function(){showToast("Tap Preview with music to hear (browser blocked autoplay)");});
+    showToast(label+" — preview & export will include this track");
+    return;
+  }
+  window._bcpMusicTrack=id;
+  showToast(label+" selected");
 }
 function bcpUploadMusic(evt){
   var file=evt.target.files[0];if(!file)return;
-  var url=URL.createObjectURL(file);var audio=new Audio(url);audio.loop=true;audio.volume=0.4;
-  if(window._bcpAudioEl)window._bcpAudioEl.pause();
-  window._bcpAudioEl=audio;audio.play().catch(function(){});
-  showToast("Music uploaded & previewing!");
+  if(!/\.(mp3|wav|m4a|aac|ogg)$/i.test(file.name)&&file.type.indexOf("audio")!==0){showToast("Use MP3, WAV, or similar audio.");return;}
+  var url=URL.createObjectURL(file);
+  var audio=new Audio(url);
+  audio.loop=true;audio.volume=0.42;
+  if(window._bcpAudioEl)try{window._bcpAudioEl.pause();}catch(e){}
+  window._bcpAudioEl=audio;
+  window._bcpMusicTrack="upload";
+  window._bcpMusicIsYoutube=false;
+  bcpHighlightMusicButtons("custom");
+  audio.play().catch(function(){showToast("Audio loaded — press Play on the video bar to preview with music");});
+  showToast("Audio file ready — plays with your video preview");
+}
+function bcpApplyAudioUrl(){
+  var inp=document.getElementById("bcp-audio-url");if(!inp||!inp.value.trim()){showToast("Paste a direct .mp3/.wav link or a YouTube URL");return;}
+  var raw=inp.value.trim();
+  if(/youtube\.com|youtu\.be/i.test(raw)){
+    window._bcpMusicIsYoutube=true;
+    var host=document.getElementById("bcp-yt-preview-host");
+    var id=null;
+    try{
+      if(raw.indexOf("youtu.be/")>=0)id=raw.split("youtu.be/")[1].split(/[?&#]/)[0];
+      else if(raw.indexOf("v=")>=0)id=raw.split("v=")[1].split(/[&#]/)[0];
+    }catch(e){}
+    if(host&&id){
+      host.style.display="block";
+      host.innerHTML="<div style=\"font-size:9px;color:var(--text3);margin-bottom:6px;\">Listen below for reference. Browsers cannot pull YouTube audio into exports — upload an MP3/WAV or use a direct audio file URL for the mixed export.</div>"
+        +"<iframe width=\"100%\" height=\"72\" style=\"border:0;border-radius:8px;\" src=\"https://www.youtube.com/embed/"+id+"?rel=0\" allow=\"accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture\" allowfullscreen></iframe>";
+    }
+    if(window._bcpAudioEl)try{window._bcpAudioEl.pause();}catch(e){}
+    window._bcpAudioEl=null;
+    bcpHighlightMusicButtons("none");
+    showToast("YouTube: use for reference. For export audio, upload a file or direct MP3/WAV URL.");
+    return;
+  }
+  window._bcpMusicIsYoutube=false;
+  var h=document.getElementById("bcp-yt-preview-host");if(h){h.style.display="none";h.innerHTML="";}
+  var u=raw;
+  if(u.indexOf("http")!==0)u="https://"+u;
+  if(window._bcpAudioEl)try{window._bcpAudioEl.pause();}catch(e){}
+  var a=new Audio();
+  a.crossOrigin="anonymous";
+  a.src=u;
+  a.loop=true;
+  a.volume=0.42;
+  a.onerror=function(){showToast("Could not load that URL — try a direct link ending in .mp3 or .wav");};
+  a.oncanplay=function(){
+    window._bcpAudioEl=a;
+    window._bcpMusicTrack="url";
+    bcpHighlightMusicButtons("custom");
+    a.play().catch(function(){showToast("Audio loaded — play video to preview");});
+  };
+}
+function bcpPreviewMusicWithVideo(){
+  var v=_ceState&&_ceState.image&&_ceState.isVideo?_ceState.image:null;
+  var m=window._bcpAudioEl;
+  if(!v){showToast("Load a video first");return;}
+  if(!m||!m.src||window._bcpMusicIsYoutube){showToast("Choose a preset, upload MP3/WAV, or paste a direct audio URL (not YouTube)");return;}
+  v.currentTime=_ceState.videoTrimStart||0;
+  v.muted=!!_ceState.videoMuted;
+  m.currentTime=0;
+  m.play().catch(function(){});
+  ceVideoPlay&&ceVideoPlay();
+  showToast("Preview with music — use the bar to pause");
 }
 function bcpCopyCaption(){
   var inp=document.getElementById("bcp-caption-text");
@@ -19092,6 +19196,8 @@ try{var _sp=JSON.parse(localStorage.getItem("brnno_content_posts")||"null");if(_
 
 // ── UPDATED STUDIO PANEL WITH ALL PHASE 1 TOOLS ───────
 function bcpOpenStudioPanel(){
+  if(document.getElementById("bcp-landing"))return;
+  if(!document.getElementById("ce-canvas"))return;
   var ex=document.getElementById("bcp-studio-panel");if(ex)ex.remove();
   var rp=document.querySelector("#cs-content-area > div > div:last-child");if(!rp)return;
   var p=document.createElement("div");p.id="bcp-studio-panel";p.style.cssText="border-bottom:1px solid var(--border);";
@@ -19155,9 +19261,17 @@ function bcpOpenStudioPanel(){
     +"<button onclick=\"bcpSelectMusic('hype1','Hype Beats')\" id=\"bcp-music-hype1\" style=\"padding:6px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;font-size:10px;cursor:pointer;color:var(--text2);text-align:left;font-weight:600;\">🔥 Hype Beats</button>"
     +"<button onclick=\"bcpSelectMusic('chill1','Chill Vibes')\" id=\"bcp-music-chill1\" style=\"padding:6px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;font-size:10px;cursor:pointer;color:var(--text2);text-align:left;font-weight:600;\">😎 Chill Vibes</button>"
     +"<button onclick=\"bcpSelectMusic('epic1','Epic Rise')\" id=\"bcp-music-epic1\" style=\"padding:6px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;font-size:10px;cursor:pointer;color:var(--text2);text-align:left;font-weight:600;\">🏆 Epic Rise</button>"
+    +"<button onclick=\"bcpSelectMusic('none','No Music')\" id=\"bcp-music-none\" style=\"padding:6px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;font-size:10px;cursor:pointer;color:var(--text2);text-align:left;font-weight:600;\">🔇 No Music</button>"
     +"</div>"
-    +"<label style=\"display:block;width:100%;padding:6px;background:var(--surface2);border:1px dashed var(--border);border-radius:7px;text-align:center;cursor:pointer;font-size:10px;color:var(--text3);\">"
-    +"Upload Audio<input type=\"file\" accept=\"audio/*\" style=\"display:none\" onchange=\"bcpUploadMusic(event)\"></label>"
+    +"<div style=\"font-size:9px;color:var(--text3);margin-bottom:6px;line-height:1.35;\">YouTube or direct MP3/WAV link (export uses file or direct audio URL only)</div>"
+    +"<input id=\"bcp-audio-url\" type=\"text\" placeholder=\"https://…youtube… or https://…mp3\" style=\"width:100%;box-sizing:border-box;background:var(--surface2);border:1px solid var(--border);border-radius:7px;padding:7px 8px;color:var(--text);font-size:10px;outline:none;margin-bottom:6px;\">"
+    +"<div style=\"display:flex;gap:6px;margin-bottom:8px;\">"
+    +"<button type=\"button\" onclick=\"bcpApplyAudioUrl()\" style=\"flex:1;padding:7px;background:var(--accent);color:#fff;border:none;border-radius:7px;font-size:10px;font-weight:700;cursor:pointer;\">Apply link</button>"
+    +"<button type=\"button\" onclick=\"bcpPreviewMusicWithVideo()\" style=\"flex:1;padding:7px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;font-size:10px;font-weight:700;cursor:pointer;color:var(--text2);\">Preview w/ video</button>"
+    +"</div>"
+    +"<div id=\"bcp-yt-preview-host\" style=\"display:none;margin-bottom:8px;\"></div>"
+    +"<label id=\"bcp-music-upload-label\" style=\"display:block;width:100%;padding:8px;background:var(--surface2);border:1px dashed var(--border);border-radius:7px;text-align:center;cursor:pointer;font-size:10px;color:var(--text3);\">"
+    +"Upload MP3 / WAV<input type=\"file\" accept=\".mp3,.wav,.m4a,audio/mpeg,audio/wav,audio/*\" style=\"display:none\" onchange=\"bcpUploadMusic(event)\"></label>"
     +"</div>"
     // Export & Share + Analytics + Schedule
     +"<div style=\"padding:12px;\">"
@@ -19170,6 +19284,12 @@ function bcpOpenStudioPanel(){
     +"<button onclick=\"bcpCopyCaption()\" style=\"padding:8px 4px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;font-size:10px;font-weight:700;cursor:pointer;color:var(--text2);text-align:center;\">📋 Copy Caption</button>"
     +"</div></div>";
   rp.insertBefore(p,rp.firstChild);
+  setTimeout(function(){
+    var t=window._bcpMusicTrack;
+    if(!t||t==="none") bcpHighlightMusicButtons("none");
+    else if(t==="upload"||t==="url") bcpHighlightMusicButtons("custom");
+    else bcpHighlightMusicButtons(t);
+  },0);
 }
 
 // Hook into creative editor open
@@ -19246,39 +19366,39 @@ function bcpShowFullEditor(){
   // Rebuild the editor HTML
   var fmt = CE_FORMATS[_ceState.format||"1x1"];
   area.innerHTML = [
-    "<div style=\"display:flex;height:100%;overflow:hidden;\">",
-      // Left toolbar
-      "<div style=\"width:64px;flex-shrink:0;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;align-items:center;padding:8px 0;gap:3px;overflow-y:auto;\">",
+    "<div style=\"display:flex;height:100%;min-height:0;overflow:hidden;background:#0a0a0a;border-radius:0;\">",
+      // Left toolbar (inside dark studio strip)
+      "<div style=\"width:64px;flex-shrink:0;background:#121212;border-right:1px solid #2a2a2a;display:flex;flex-direction:column;align-items:center;padding:8px 0;gap:3px;overflow-y:auto;\">",
         ceToolLabeled("select","🖱️","Select"),
         ceToolLabeled("text","T","Text"),
         ceToolLabeled("shape","⬛","Shape"),
-        "<div style=\"width:40px;height:1px;background:var(--border);margin:4px 0;\"></div>",
-        "<button onclick=\"ceUndo()\" style=\"width:50px;height:42px;border-radius:8px;background:none;border:1px solid var(--border);cursor:pointer;color:var(--text2);font-size:11px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;\"><span style=\"font-size:16px;\">↩</span><span style=\"font-size:8px;color:var(--text3);\">Undo</span></button>",
-        "<button onclick=\"ceRedo()\" style=\"width:50px;height:42px;border-radius:8px;background:none;border:1px solid var(--border);cursor:pointer;color:var(--text2);font-size:11px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;\"><span style=\"font-size:16px;\">↪</span><span style=\"font-size:8px;color:var(--text3);\">Redo</span></button>",
-        "<div style=\"width:40px;height:1px;background:var(--border);margin:4px 0;\"></div>",
-        "<button onclick=\"ceFitImage()\" style=\"width:50px;height:42px;border-radius:8px;background:none;border:1px solid var(--border);cursor:pointer;color:var(--text2);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;\"><span style=\"font-size:14px;\">⊡</span><span style=\"font-size:8px;color:var(--text3);\">Fit</span></button>",
-        "<button onclick=\"ceFillImage()\" style=\"width:50px;height:42px;border-radius:8px;background:none;border:1px solid var(--border);cursor:pointer;color:var(--text2);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;\"><span style=\"font-size:14px;\">⊞</span><span style=\"font-size:8px;color:var(--text3);\">Fill</span></button>",
-        "<button onclick=\"ceRotateImage(-90)\" style=\"width:50px;height:42px;border-radius:8px;background:none;border:1px solid var(--border);cursor:pointer;color:var(--text2);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;\"><span style=\"font-size:14px;\">↺</span><span style=\"font-size:8px;color:var(--text3);\">Rotate</span></button>",
-        "<button onclick=\"ceFlipImage()\" style=\"width:50px;height:42px;border-radius:8px;background:none;border:1px solid var(--border);cursor:pointer;color:var(--text2);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;\"><span style=\"font-size:14px;\">↔</span><span style=\"font-size:8px;color:var(--text3);\">Flip</span></button>",
+        "<div style=\"width:40px;height:1px;background:#333;margin:4px 0;\"></div>",
+        "<button onclick=\"ceUndo()\" style=\"width:50px;height:42px;border-radius:8px;background:rgba(255,255,255,.04);border:1px solid #333;cursor:pointer;color:#ccc;font-size:11px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;\"><span style=\"font-size:16px;\">↩</span><span style=\"font-size:8px;color:#888;\">Undo</span></button>",
+        "<button onclick=\"ceRedo()\" style=\"width:50px;height:42px;border-radius:8px;background:rgba(255,255,255,.04);border:1px solid #333;cursor:pointer;color:#ccc;font-size:11px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;\"><span style=\"font-size:16px;\">↪</span><span style=\"font-size:8px;color:#888;\">Redo</span></button>",
+        "<div style=\"width:40px;height:1px;background:#333;margin:4px 0;\"></div>",
+        "<button onclick=\"ceFitImage()\" style=\"width:50px;height:42px;border-radius:8px;background:rgba(255,255,255,.04);border:1px solid #333;cursor:pointer;color:#ccc;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;\"><span style=\"font-size:14px;\">⊡</span><span style=\"font-size:8px;color:#888;\">Fit</span></button>",
+        "<button onclick=\"ceFillImage()\" style=\"width:50px;height:42px;border-radius:8px;background:rgba(255,255,255,.04);border:1px solid #333;cursor:pointer;color:#ccc;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;\"><span style=\"font-size:14px;\">⊞</span><span style=\"font-size:8px;color:#888;\">Fill</span></button>",
+        "<button onclick=\"ceRotateImage(-90)\" style=\"width:50px;height:42px;border-radius:8px;background:rgba(255,255,255,.04);border:1px solid #333;cursor:pointer;color:#ccc;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;\"><span style=\"font-size:14px;\">↺</span><span style=\"font-size:8px;color:#888;\">Rotate</span></button>",
+        "<button onclick=\"ceFlipImage()\" style=\"width:50px;height:42px;border-radius:8px;background:rgba(255,255,255,.04);border:1px solid #333;cursor:pointer;color:#ccc;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;\"><span style=\"font-size:14px;\">↔</span><span style=\"font-size:8px;color:#888;\">Flip</span></button>",
       "</div>",
-      // Canvas area
-      "<div style=\"flex:1;display:flex;flex-direction:column;overflow:hidden;\">",
+      // Canvas area (center column — dark workspace)
+      "<div style=\"flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden;background:#0a0a0a;\">",
         // Format bar
-        "<div style=\"padding:8px 12px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;flex-shrink:0;background:var(--surface);\">",
-          "<span style=\"font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;\">Format:</span>",
-          Object.entries(CE_FORMATS).map(function(e2){var k=e2[0],f=e2[1];return "<button onclick=\"ceSetFormat(\'"+k+"\')\" style=\"padding:4px 10px;border-radius:6px;font-size:11px;cursor:pointer;border:1px solid "+(_ceState.format===k?"var(--accent)":"var(--border)")+";background:"+(_ceState.format===k?"var(--accent)":"transparent")+";color:"+(_ceState.format===k?"#fff":"var(--text2)")+";\">"+f.icon+" "+f.label+"</button>";}).join(""),
+        "<div style=\"padding:8px 12px;border-bottom:1px solid #2a2a2a;display:flex;align-items:center;gap:8px;flex-shrink:0;background:#141414;\">",
+          "<span style=\"font-size:10px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:.08em;\">Format:</span>",
+          Object.entries(CE_FORMATS).map(function(e2){var k=e2[0],f=e2[1];return "<button onclick=\"ceSetFormat(\'"+k+"\')\" style=\"padding:4px 10px;border-radius:6px;font-size:11px;cursor:pointer;border:1px solid "+(_ceState.format===k?"#e8a838":"#333")+";background:"+(_ceState.format===k?"#e8a838":"transparent")+";color:"+(_ceState.format===k?"#000":"#ccc")+";\">"+f.icon+" "+f.label+"</button>";}).join(""),
           "<div style=\"flex:1;\"></div>",
           "<button onclick=\"ceExportImage()\" style=\"padding:6px 14px;background:#22c55e;color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;\">⬇️ Export</button>",
-          "<button onclick=\"ceUseInPost()\" style=\"padding:6px 14px;background:var(--accent);color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;\">→ Use in Post</button>",
-          "<button onclick=\"csOpenCreativeEditor()\" style=\"padding:6px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;font-size:11px;cursor:pointer;color:var(--text2);\">← Back</button>",
+          "<button onclick=\"ceUseInPost()\" style=\"padding:6px 14px;background:#1a4a7c;color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;\">→ Use in Post</button>",
+          "<button onclick=\"csOpenCreativeEditor()\" style=\"padding:6px 12px;background:#222;border:1px solid #333;border-radius:7px;font-size:11px;cursor:pointer;color:#ccc;\">← Back</button>",
         "</div>",
-        // Canvas container
-        "<div id=\"ce-canvas-wrap\" style=\"flex:1;overflow:hidden;display:flex;align-items:center;justify-content:center;background:#1a1a1a;position:relative;\">",
-          "<canvas id=\"ce-canvas\" style=\"box-shadow:0 8px 40px rgba(0,0,0,.5);cursor:crosshair;max-width:100%;max-height:100%;\"></canvas>",
+        // Canvas container — fills remaining height, preview centered
+        "<div id=\"ce-canvas-wrap\" style=\"flex:1;min-height:0;overflow:hidden;display:flex;align-items:center;justify-content:center;background:#050505;position:relative;\">",
+          "<canvas id=\"ce-canvas\" style=\"box-shadow:0 12px 48px rgba(0,0,0,.75);cursor:crosshair;max-width:100%;max-height:100%;object-fit:contain;\"></canvas>",
         "</div>",
       "</div>",
-      // Right panel
-      "<div style=\"width:240px;flex-shrink:0;border-left:1px solid var(--border);background:var(--surface);overflow-y:auto;display:flex;flex-direction:column;\">",
+      // Right panel (dark rail — matches Photoshop-style side docks)
+      "<div style=\"width:260px;flex-shrink:0;border-left:1px solid #2a2a2a;background:#121212;overflow-y:auto;display:flex;flex-direction:column;min-height:0;\">",
         ceRightPanelHTML(),
       "</div>",
     "</div>"
@@ -19298,26 +19418,26 @@ function bcpShowFullEditor(){
 
 function ceRightPanelHTML(){
   return [
-    "<div style=\"padding:12px;border-bottom:1px solid var(--border);\">",
-      "<label style=\"display:block;width:100%;padding:9px;background:var(--surface2);border:1px dashed var(--border2);border-radius:8px;text-align:center;cursor:pointer;font-size:12px;color:var(--text2);\">",
+    "<div style=\"padding:12px;border-bottom:1px solid #2a2a2a;\">",
+      "<label style=\"display:block;width:100%;padding:9px;background:#1a1a1a;border:1px dashed #444;border-radius:8px;text-align:center;cursor:pointer;font-size:12px;color:#ccc;\">",
         "📸 Change Photo / Video",
         "<input type=\"file\" accept=\"image/*,video/*\" style=\"display:none\" onchange=\"ceLoadFile(event)\">",
       "</label>",
     "</div>",
-    "<div style=\"padding:12px;border-bottom:1px solid var(--border);\">",
-      "<div style=\"font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);margin-bottom:10px;\">📐 Image Size & Position</div>",
+    "<div style=\"padding:12px;border-bottom:1px solid #2a2a2a;\">",
+      "<div style=\"font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#888;margin-bottom:10px;\">📐 Image Size & Position</div>",
       "<div style=\"display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px;\">",
-        "<button onclick=\"ceFitImage()\" style=\"padding:7px 4px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;font-size:11px;cursor:pointer;color:var(--text2);\">⊡ Fit All</button>",
-        "<button onclick=\"ceFillImage()\" style=\"padding:7px 4px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;font-size:11px;cursor:pointer;color:var(--text2);\">⊞ Fill</button>",
-        "<button onclick=\"ceCenterImage()\" style=\"padding:7px 4px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;font-size:11px;cursor:pointer;color:var(--text2);\">⊕ Center</button>",
-        "<button onclick=\"ceRotateImage(-90)\" style=\"padding:7px 4px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;font-size:11px;cursor:pointer;color:var(--text2);\">↺ Rotate</button>",
+        "<button onclick=\"ceFitImage()\" style=\"padding:7px 4px;background:#1e1e1e;border:1px solid #333;border-radius:7px;font-size:11px;cursor:pointer;color:#ccc;\">⊡ Fit All</button>",
+        "<button onclick=\"ceFillImage()\" style=\"padding:7px 4px;background:#1e1e1e;border:1px solid #333;border-radius:7px;font-size:11px;cursor:pointer;color:#ccc;\">⊞ Fill</button>",
+        "<button onclick=\"ceCenterImage()\" style=\"padding:7px 4px;background:#1e1e1e;border:1px solid #333;border-radius:7px;font-size:11px;cursor:pointer;color:#ccc;\">⊕ Center</button>",
+        "<button onclick=\"ceRotateImage(-90)\" style=\"padding:7px 4px;background:#1e1e1e;border:1px solid #333;border-radius:7px;font-size:11px;cursor:pointer;color:#ccc;\">↺ Rotate</button>",
       "</div>",
       ceSlider("Image Scale","ce-imgscale",10,400,100,"ceScaleImage(this.value)")+"%",
     "</div>",
-    "<div style=\"padding:12px;border-bottom:1px solid var(--border);\">",
-      "<div style=\"font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);margin-bottom:8px;\">Filters</div>",
+    "<div style=\"padding:12px;border-bottom:1px solid #2a2a2a;\">",
+      "<div style=\"font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#888;margin-bottom:8px;\">Filters</div>",
       "<div style=\"display:grid;grid-template-columns:1fr 1fr;gap:6px;\">",
-        CE_FILTERS.map(function(f){return "<button onclick=\"ceApplyFilter(\'"+f.id+"\')\" style=\"padding:6px 4px;border-radius:6px;font-size:11px;cursor:pointer;border:1px solid var(--border);background:var(--surface2);color:var(--text2);\">"+f.label+"</button>";}).join(""),
+        CE_FILTERS.map(function(f){return "<button onclick=\"ceApplyFilter(\'"+f.id+"\')\" style=\"padding:6px 4px;border-radius:6px;font-size:11px;cursor:pointer;border:1px solid #333;background:#1e1e1e;color:#ccc;\">"+f.label+"</button>";}).join(""),
       "</div>",
     "</div>",
     "<div style=\"padding:12px;\">",
