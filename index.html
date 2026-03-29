@@ -19878,58 +19878,6 @@ function bcpApplyTemplate(id){
   ceRedraw();showToast("Template applied! Upload a photo to complete it.");
 }
 
-function bcpOpenStudioPanel(){
-  // Don't show on landing screen
-  if(document.getElementById("bcp-landing"))return;
-  var ex=document.getElementById("bcp-studio-panel");if(ex)ex.remove();
-  var rp=document.querySelector("#cs-content-area > div > div:last-child");
-  // Make sure we're in the editor not the landing
-  if(!rp||rp.id==="bcp-landing"||!document.getElementById("ce-canvas"))return;
-  var p=document.createElement("div");p.id="bcp-studio-panel";p.style.cssText="border-bottom:1px solid var(--border);";
-  p.innerHTML="<div style=\"padding:12px;border-bottom:1px solid var(--border);background:linear-gradient(135deg,rgba(232,168,56,.08),transparent);\">"
-    +"<div style=\"display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;\">"
-    +"<div style=\"font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--gold2);\">&nbsp;Brnno Creative+</div>"
-    +"<button onclick=\"bcpOpenBrandKit()\" style=\"font-size:9px;padding:3px 8px;background:rgba(232,168,56,.15);border:1px solid rgba(232,168,56,.3);border-radius:20px;cursor:pointer;color:var(--gold2);font-weight:700;\">Brand Kit</button></div>"
-    +"<button onclick=\"bcpOpenTemplates()\" style=\"width:100%;padding:9px;background:linear-gradient(135deg,#e8a838,#d4901f);color:#000;border:none;border-radius:9px;font-size:12px;font-weight:800;cursor:pointer;margin-bottom:6px;\">Open Template Library</button>"
-    +"</div>"
-    +"<div style=\"padding:12px;border-bottom:1px solid var(--border);\">"
-    +"<div style=\"font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);margin-bottom:8px;\">Text Animation</div>"
-    +"<div style=\"display:flex;flex-wrap:wrap;gap:5px;\">"
-    +"<button onclick=\"bcpSetAnim('none')\" id=\"bcp-anim-none\" style=\"padding:4px 9px;border-radius:20px;font-size:10px;font-weight:600;cursor:pointer;border:1px solid var(--gold2);background:var(--gold2);color:#000;\">None</button>"
-    +"<button onclick=\"bcpSetAnim('fadein')\" id=\"bcp-anim-fadein\" style=\"padding:4px 9px;border-radius:20px;font-size:10px;font-weight:600;cursor:pointer;border:1px solid var(--border);background:var(--surface2);color:var(--text2);\">Fade In</button>"
-    +"<button onclick=\"bcpSetAnim('slideup')\" id=\"bcp-anim-slideup\" style=\"padding:4px 9px;border-radius:20px;font-size:10px;font-weight:600;cursor:pointer;border:1px solid var(--border);background:var(--surface2);color:var(--text2);\">Slide Up</button>"
-    +"<button onclick=\"bcpSetAnim('glow')\" id=\"bcp-anim-glow\" style=\"padding:4px 9px;border-radius:20px;font-size:10px;font-weight:600;cursor:pointer;border:1px solid var(--border);background:var(--surface2);color:var(--text2);\">Glow</button>"
-    +"<button onclick=\"bcpSetAnim('bounce')\" id=\"bcp-anim-bounce\" style=\"padding:4px 9px;border-radius:20px;font-size:10px;font-weight:600;cursor:pointer;border:1px solid var(--border);background:var(--surface2);color:var(--text2);\">Bounce</button>"
-    +"<button onclick=\"bcpSetAnim('typewriter')\" id=\"bcp-anim-typewriter\" style=\"padding:4px 9px;border-radius:20px;font-size:10px;font-weight:600;cursor:pointer;border:1px solid var(--border);background:var(--surface2);color:var(--text2);\">Typewriter</button>"
-    +"</div></div>"
-    +"<div style=\"padding:12px;border-bottom:1px solid var(--border);\">"
-    +"<div style=\"font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);margin-bottom:8px;\">Auto-Caption</div>"
-    +"<textarea id=\"bcp-caption-text\" placeholder=\"Type caption — overlays on video/photo...\" rows=\"2\" style=\"width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px;color:var(--text);font-size:11px;outline:none;resize:none;margin-bottom:6px;\"></textarea>"
-    +"<div style=\"display:flex;gap:6px;\">"
-    +"<button onclick=\"bcpApplyCaption()\" style=\"flex:1;padding:7px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;font-size:11px;font-weight:700;cursor:pointer;color:var(--text2);\">&nbsp;Add to Canvas</button>"
-    +"<button onclick=\"bcpAutoCaption()\" style=\"flex:1;padding:7px;background:linear-gradient(135deg,#7c3aed,#4f46e5);color:#fff;border:none;border-radius:7px;font-size:11px;font-weight:700;cursor:pointer;\">AI Caption</button>"
-    +"</div></div>"
-    +"<div style=\"padding:12px;border-bottom:1px solid var(--border);\">"
-    +"<div style=\"font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);margin-bottom:8px;\">Music Overlay</div>"
-    +"<div style=\"display:flex;flex-direction:column;gap:5px;margin-bottom:8px;\">"
-    +"<button onclick=\"bcpSelectMusic('hype1','Hype Beats')\" id=\"bcp-music-hype1\" style=\"padding:7px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;font-size:11px;cursor:pointer;color:var(--text2);text-align:left;font-weight:600;\">🔥 Hype Beats</button>"
-    +"<button onclick=\"bcpSelectMusic('chill1','Chill Vibes')\" id=\"bcp-music-chill1\" style=\"padding:7px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;font-size:11px;cursor:pointer;color:var(--text2);text-align:left;font-weight:600;\">😎 Chill Vibes</button>"
-    +"<button onclick=\"bcpSelectMusic('epic1','Epic Rise')\" id=\"bcp-music-epic1\" style=\"padding:7px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;font-size:11px;cursor:pointer;color:var(--text2);text-align:left;font-weight:600;\">🏆 Epic Rise</button>"
-    +"<button onclick=\"bcpSelectMusic('none','No Music')\" id=\"bcp-music-none\" style=\"padding:7px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;font-size:11px;cursor:pointer;color:var(--text2);text-align:left;font-weight:600;\">🔇 No Music</button>"
-    +"</div>"
-    +"<label style=\"display:block;width:100%;padding:7px;background:var(--surface2);border:1px dashed var(--border);border-radius:7px;text-align:center;cursor:pointer;font-size:10px;color:var(--text3);\">"
-    +"Upload your own audio<input type=\"file\" accept=\"audio/*\" style=\"display:none\" onchange=\"bcpUploadMusic(event)\"></label>"
-    +"</div>"
-    +"<div style=\"padding:12px;\">"
-    +"<div style=\"font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);margin-bottom:8px;\">Export & Share</div>"
-    +"<div style=\"display:grid;grid-template-columns:1fr 1fr;gap:6px;\">"
-    +"<button onclick=\"ceExportImage()\" style=\"padding:8px 4px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;font-size:10px;font-weight:700;cursor:pointer;color:var(--text2);\">&nbsp;Photo/Frame</button>"
-    +"<button onclick=\"typeof ceExportVideo==='function'?ceExportVideo():showToast('Load a video first')\" style=\"padding:8px 4px;background:linear-gradient(135deg,#7c3aed,#4f46e5);color:#fff;border:none;border-radius:7px;font-size:10px;font-weight:700;cursor:pointer;\">&nbsp;Video</button>"
-    +"<button onclick=\"bcpCopyCaption()\" style=\"padding:8px 4px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;font-size:10px;font-weight:700;cursor:pointer;color:var(--text2);\">&nbsp;Copy Caption</button>"
-    +"<button onclick=\"ceUseInPost()\" style=\"padding:8px 4px;background:linear-gradient(135deg,#059669,#047857);color:#fff;border:none;border-radius:7px;font-size:10px;font-weight:700;cursor:pointer;\">&nbsp;Use in Post</button>"
-    +"</div></div>";
-  rp.insertBefore(p,rp.firstChild);
-}
 
 window._bcpAnimEffect="none";
 function bcpSetAnim(key){
@@ -20690,52 +20638,6 @@ window.ceOpenTemplates=bcpOpenTemplates;
 
 // ── BRNNO CREATIVE+ LANDING SCREEN ─────────────────────
 // Replaces the black canvas with a beautiful guided entry screen
-function csOpenCreativeEditor(opts){
-  const area = document.getElementById("cs-content-area");
-  if(!area) return;
-  _csView = "creative";
-
-  // If no content loaded yet, show the landing screen
-  if(!_ceState || !_ceState.image) {
-    area.innerHTML = "";
-    const landing = document.createElement("div");
-    landing.id = "bcp-landing";
-    landing.style.cssText = "width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:linear-gradient(135deg,#0f0d0a 0%,#1a1714 50%,#0f0d0a 100%);padding:40px 24px;overflow-y:auto;box-sizing:border-box;";
-    landing.innerHTML = [
-      "<div style=\"font-size:48px;margin-bottom:12px;\">✨</div>",
-      "<div style=\"font-size:26px;font-weight:900;color:#fff;font-family:var(--font-head);margin-bottom:8px;text-align:center;\">Brnno Creative+</div>",
-      "<div style=\"font-size:14px;color:rgba(255,255,255,.55);margin-bottom:36px;text-align:center;max-width:380px;line-height:1.6;\">Create stunning ads, videos & social content<br>for your detailing business in seconds</div>",
-      "<button onclick=\"typeof bcpOpenTemplates===\'function\'?bcpOpenTemplates():null\" style=\"width:100%;max-width:420px;padding:16px;background:linear-gradient(135deg,#e8a838,#d4901f);color:#000;border:none;border-radius:14px;font-size:16px;font-weight:900;cursor:pointer;margin-bottom:16px;box-shadow:0 8px 24px rgba(232,168,56,.3);\">✨ Start from a Template</button>",
-      "<div style=\"display:grid;grid-template-columns:1fr 1fr;gap:12px;width:100%;max-width:420px;margin-bottom:16px;\">",
-        "<label style=\"display:flex;flex-direction:column;align-items:center;gap:10px;padding:20px 16px;background:rgba(232,168,56,.1);border:2px solid rgba(232,168,56,.3);border-radius:14px;cursor:pointer;\" onmouseover=\"this.style.borderColor=\'rgba(232,168,56,.8)\'\" onmouseout=\"this.style.borderColor=\'rgba(232,168,56,.3)\'\">",
-          "<span style=\"font-size:32px;\">📸</span>",
-          "<span style=\"font-size:13px;font-weight:700;color:#e8a838;\">Upload Photo</span>",
-          "<input type=\"file\" accept=\"image/*\" style=\"display:none\" onchange=\"bcpLandingLoad(event)\">",
-        "</label>",
-        "<label style=\"display:flex;flex-direction:column;align-items:center;gap:10px;padding:20px 16px;background:rgba(124,58,237,.1);border:2px solid rgba(124,58,237,.3);border-radius:14px;cursor:pointer;\" onmouseover=\"this.style.borderColor=\'rgba(124,58,237,.8)\'\" onmouseout=\"this.style.borderColor=\'rgba(124,58,237,.3)\'\">",
-          "<span style=\"font-size:32px;\">🎬</span>",
-          "<span style=\"font-size:13px;font-weight:700;color:#a78bfa;\">Upload Video</span>",
-          "<input type=\"file\" accept=\"video/*\" style=\"display:none\" onchange=\"bcpLandingLoad(event)\">",
-        "</label>",
-      "</div>",
-      "<div style=\"display:grid;grid-template-columns:1fr 1fr;gap:10px;width:100%;max-width:420px;margin-bottom:16px;\">",
-        "<button onclick=\"typeof bcpOpenBeforeAfter===\'function\'&&bcpOpenBeforeAfter()\" style=\"padding:12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);border-radius:12px;color:#fff;font-size:12px;font-weight:700;cursor:pointer;\">↔️ Before &amp; After</button>",
-        "<button onclick=\"typeof bcpOpenSlideshow===\'function\'&&bcpOpenSlideshow()\" style=\"padding:12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);border-radius:12px;color:#fff;font-size:12px;font-weight:700;cursor:pointer;\">🎞️ Slideshow Video</button>",
-        "<button onclick=\"typeof bcpOpenMultiClip===\'function\'&&bcpOpenMultiClip()\" style=\"padding:12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);border-radius:12px;color:#fff;font-size:12px;font-weight:700;cursor:pointer;\">🎬 Multi-Clip Merge</button>",
-        "<button onclick=\"typeof bcpOpenVoiceover===\'function\'&&bcpOpenVoiceover()\" style=\"padding:12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);border-radius:12px;color:#fff;font-size:12px;font-weight:700;cursor:pointer;\">🎙️ Voice-Over</button>",
-      "</div>",
-      "<div style=\"display:flex;gap:8px;align-items:center;width:100%;max-width:420px;\">",
-        "<input id=\"bcp-land-url\" placeholder=\"Or paste a video URL (.mp4)...\" style=\"flex:1;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);border-radius:10px;padding:10px 14px;color:#fff;font-size:12px;outline:none;\">",
-        "<button onclick=\"var u=document.getElementById(\'bcp-land-url\');u&&u.value&&(typeof ceLoadVideoUrl===\'function\'?ceLoadVideoUrl():null)\" style=\"padding:10px 16px;background:rgba(124,58,237,.8);color:#fff;border:none;border-radius:10px;font-size:12px;cursor:pointer;font-weight:700;\">Load</button>",
-      "</div>"
-    ].join("");
-    area.appendChild(landing);
-    return;
-  }
-
-  // Content is loaded - show the full editor
-  bcpShowFullEditor();
-}
 
 function bcpLandingLoad(evt){
   var file = evt.target.files[0]; if(!file) return;
