@@ -13911,6 +13911,8 @@ let _csEditPost = null; // post being edited
 let _bcpCreativeStep = 1;
 let _bcpEditorMode = 'full'; // 'full' | 'crop'
 let _bcpSkipLandingOnce = false;
+/** New drafts: hide compose + platform preview until user clicks “Post & preview” (step 3). */
+let _bcpComposeUnlocked = false;
 
 function csEnsureWizardStyles(){
   if(document.getElementById('cs-wizard-styles')) return;
@@ -13926,6 +13928,17 @@ function csEnsureWizardStyles(){
   document.head.appendChild(s);
 }
 
+function csEnsureComposeLockStyles(){
+  if(document.getElementById('cs-compose-lock-styles')) return;
+  var s = document.createElement('style');
+  s.id = 'cs-compose-lock-styles';
+  s.textContent = ''
+    + '#cs-unified-root[data-compose="locked"] #cs-unified-compose-col,'
+    + '#cs-unified-root[data-compose="locked"] #cs-unified-preview-wrap{display:none !important;}'
+    + '#cs-unified-root[data-compose="locked"] #cs-unified-editor-col{flex:1 1 100% !important;max-width:100% !important;min-width:0 !important;}';
+  document.head.appendChild(s);
+}
+
 function renderContentStudio(){
   const page = document.getElementById('content-studio-page');
   if(!page) return;
@@ -13934,20 +13947,21 @@ function renderContentStudio(){
   page.innerHTML = '<div style="display:flex;flex-direction:column;flex:1;min-height:0;height:100%;background:var(--bg);">'
     // Header
     + '<div style="padding:16px 24px 0;flex-shrink:0;">'
-      + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">'
+      + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px;">'
         + '<div style="display:flex;gap:8px;flex-wrap:wrap;">'
           + csTabBtn('creative','✨ Make Content', _csView==='creative')
           + csTabBtn('campaigns','🎯 Campaigns', _csView==='campaigns')
           + csTabBtn('calendar','📅 Calendar', _csView==='calendar')
           + csTabBtn('analytics','📊 Analytics', _csView==='analytics')
         + '</div>'
-        + '<button onclick="csOpenCompose(null)" style="padding:8px 18px;background:var(--accent);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;" title="Caption, schedule & preview (same screen)">+ New Post</button>'
         + '<button onclick="typeof bcpOpenBrandKit===\'function\'&&bcpOpenBrandKit()" style="padding:8px 14px;background:linear-gradient(135deg,rgba(232,168,56,.15),rgba(232,168,56,.08));border:1px solid rgba(232,168,56,.4);border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;color:var(--gold2);">🎨 Brand Kit</button>'
-      
       + '</div>'
     + '</div>'
     // Content area
     + '<div id="cs-content-area" style="flex:1;overflow:hidden;min-height:0;">'
+    + '</div>'
+    + '<div style="padding:8px 24px 14px;flex-shrink:0;display:flex;justify-content:flex-end;align-items:center;gap:12px;border-top:1px solid var(--border);background:var(--bg);">'
+      + '<button type="button" onclick="csConfirmNewPost()" style="padding:6px 12px;background:transparent;border:1px solid var(--border);border-radius:6px;font-size:11px;font-weight:600;color:var(--text3);cursor:pointer;" title="Discard current draft in the composer and start over">+ New post</button>'
     + '</div>'
   + '</div>';
 
@@ -13971,13 +13985,43 @@ function csSetView(v){
 function csGetCreativeMountEl(){
   return document.getElementById('cs-unified-editor-col') || document.getElementById('cs-content-area');
 }
+
+function csConfirmNewPost(){
+  if(!confirm('Start a new post? Your current creative draft and unsaved composer fields will be reset.')) return;
+  csOpenCompose(null);
+}
+
+function bcpShowPostReadyModal(){
+  if(document.getElementById('bcp-post-ready-modal')) return;
+  var o=document.createElement('div');
+  o.id='bcp-post-ready-modal';
+  o.style.cssText='position:fixed;inset:0;z-index:10020;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);';
+  o.innerHTML='<div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:22px 24px;max-width:400px;width:100%;box-shadow:0 20px 50px rgba(0,0,0,.35);" onclick="event.stopPropagation()">'
+    +'<div style="font-size:17px;font-weight:800;color:var(--text);margin-bottom:8px;">Ready to post?</div>'
+    +'<div style="font-size:13px;color:var(--text3);line-height:1.45;margin-bottom:18px;">Choose where to publish, add your caption, and schedule — or keep editing and come back here.</div>'
+    +'<button type="button" onclick="document.getElementById(\'bcp-post-ready-modal\').remove()" style="width:100%;padding:11px;background:var(--accent);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">Got it</button>'
+    +'</div>';
+  o.onclick=function(){ o.remove(); };
+  document.body.appendChild(o);
+}
+
 function csScrollToUnifiedPreview(silent){
+  if(!silent){
+    var root=document.getElementById('cs-unified-root');
+    if(root && root.getAttribute('data-compose')==='locked'){
+      _bcpComposeUnlocked=true;
+      root.setAttribute('data-compose','unlocked');
+      bcpShowPostReadyModal();
+    }
+  }
+  var compose=document.getElementById('cs-unified-compose-col');
+  if(compose && !silent) compose.scrollIntoView({behavior:'smooth',block:'nearest'});
   var el=document.getElementById('cs-unified-preview-wrap');
   if(el){
     el.scrollIntoView({behavior:'smooth',block:'nearest'});
     try{ el.style.boxShadow='0 0 0 2px rgba(232,168,56,.5)'; setTimeout(function(){ el.style.boxShadow=''; },1400); }catch(e){}
   }
-  if(!silent) showToast('Platform preview');
+  if(!silent) showToast('Caption, channels & schedule →');
 }
 function csRenderView(){
   const area = document.getElementById('cs-content-area');
@@ -14150,6 +14194,7 @@ function csRenderUnifiedCreate(){
   const area = document.getElementById('cs-content-area');
   if(!area) return;
   csEnsureWizardStyles();
+  csEnsureComposeLockStyles();
   const post = _csEditPost;
   const p = post && !post._prefill ? post : {};
   const prefill = post?._prefill || {};
@@ -14161,6 +14206,8 @@ function csRenderUnifiedCreate(){
     _bcpEditorMode = 'crop';
   }
   _bcpCreativeStep = wstep;
+  if(p && p.id){ _bcpComposeUnlocked = true; }
+  const composeLocked = (wstep >= 3 && isNew && !p.id && !_bcpComposeUnlocked);
   const campaigns = csGetCampaigns();
   if(!isNew && p.videoData){
     window._cePendingVideoUrl=p.videoData;
@@ -14182,7 +14229,7 @@ function csRenderUnifiedCreate(){
   const composeHtml = csBuildComposeColumnHTML(p, prefill, isNew, leadPhotos, campaigns);
   const previewInner = csPreviewHTML(p);
   area.innerHTML = ''
-    + '<div id="cs-unified-root" data-wizard-step="'+wstep+'" style="display:flex;flex-direction:row;height:100%;min-height:0;overflow:hidden;align-items:stretch;">'
+    + '<div id="cs-unified-root" data-wizard-step="'+wstep+'" data-compose="'+(composeLocked?'locked':'unlocked')+'" style="display:flex;flex-direction:row;height:100%;min-height:0;overflow:hidden;align-items:stretch;">'
     + '<div id="cs-unified-editor-col" style="flex:1;min-width:0;min-height:0;overflow:hidden;display:flex;flex-direction:column;"></div>'
     + '<div id="cs-unified-compose-col" style="width:min(400px,38vw);min-width:280px;max-width:460px;flex-shrink:0;overflow-y:auto;border-left:1px solid var(--border);background:var(--bg);-webkit-overflow-scrolling:touch;">'
     + composeHtml
@@ -14203,6 +14250,7 @@ function csOpenCompose(postOrId){
   if(postOrId === null || postOrId === undefined){
     _bcpCreativeStep = 1;
     _bcpEditorMode = 'full';
+    _bcpComposeUnlocked = false;
     if(typeof _ceState !== 'undefined' && _ceState){
       _ceState.texts = [];
       _ceState.shapes = [];
@@ -14222,6 +14270,7 @@ function csOpenCompose(postOrId){
   if(post && post.id){
     _bcpCreativeStep = 3;
     _bcpEditorMode = 'full';
+    _bcpComposeUnlocked = true;
   }
   renderContentStudio();
 }
@@ -14320,6 +14369,8 @@ function csUpdateCharCount(){
 
 window.csSchedulePreviewSync = function(){
   if((_bcpCreativeStep || 1) < 3) return;
+  var ur=document.getElementById('cs-unified-root');
+  if(ur && ur.getAttribute('data-compose')==='locked') return;
   if(window._csPrevSyncT) clearTimeout(window._csPrevSyncT);
   window._csPrevSyncT = setTimeout(function(){
     window._csPrevSyncT = null;
@@ -15403,6 +15454,7 @@ function bcpExportDoneNewProject(){
   }
   _bcpCreativeStep = 1;
   _bcpEditorMode = 'full';
+  _bcpComposeUnlocked = false;
   if(typeof renderContentStudio === 'function') renderContentStudio();
   else csOpenCreativeEditor();
 }
@@ -16175,6 +16227,7 @@ function ceUseInPost(){
   function goCompose(){
     _bcpCreativeStep = 3;
     _bcpEditorMode = 'full';
+    _bcpComposeUnlocked = true;
     _csView='creative';
     csRenderView();
     setTimeout(function(){ csInsertComposeMediaPreview&&csInsertComposeMediaPreview(); if(csScrollToUnifiedPreview) csScrollToUnifiedPreview(true); }, 100);
@@ -19863,15 +19916,16 @@ function bcpOpenStudioPanel(){
     +"</div>"
     // Text animation
     +"<div style=\"padding:12px;border-bottom:1px solid var(--border);\">"
-    +"<div style=\"font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);margin-bottom:8px;\">Text Animation</div>"
-    +"<div style=\"display:flex;flex-wrap:wrap;gap:5px;\">"
+    +"<div style=\"display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;\">"
+    +"<div style=\"font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);\">Text Animation</div>"
+    +"<div style=\"display:flex;flex-wrap:wrap;gap:5px;justify-content:flex-end;flex:1;min-width:0;\">"
     +"<button onclick=\"bcpSetAnim('none')\" id=\"bcp-anim-none\" style=\"padding:4px 9px;border-radius:20px;font-size:10px;font-weight:600;cursor:pointer;border:1px solid var(--gold2);background:var(--gold2);color:#000;\">None</button>"
     +"<button onclick=\"bcpSetAnim('fadein')\" id=\"bcp-anim-fadein\" style=\"padding:4px 9px;border-radius:20px;font-size:10px;font-weight:600;cursor:pointer;border:1px solid var(--border);background:var(--surface2);color:var(--text2);\">Fade In</button>"
     +"<button onclick=\"bcpSetAnim('slideup')\" id=\"bcp-anim-slideup\" style=\"padding:4px 9px;border-radius:20px;font-size:10px;font-weight:600;cursor:pointer;border:1px solid var(--border);background:var(--surface2);color:var(--text2);\">Slide Up</button>"
     +"<button onclick=\"bcpSetAnim('glow')\" id=\"bcp-anim-glow\" style=\"padding:4px 9px;border-radius:20px;font-size:10px;font-weight:600;cursor:pointer;border:1px solid var(--border);background:var(--surface2);color:var(--text2);\">Glow</button>"
     +"<button onclick=\"bcpSetAnim('bounce')\" id=\"bcp-anim-bounce\" style=\"padding:4px 9px;border-radius:20px;font-size:10px;font-weight:600;cursor:pointer;border:1px solid var(--border);background:var(--surface2);color:var(--text2);\">Bounce</button>"
     +"<button onclick=\"bcpSetAnim('typewriter')\" id=\"bcp-anim-typewriter\" style=\"padding:4px 9px;border-radius:20px;font-size:10px;font-weight:600;cursor:pointer;border:1px solid var(--border);background:var(--surface2);color:var(--text2);\">Typewriter</button>"
-    +"</div></div>"
+    +"</div></div></div>"
     // Caption
     +"<div style=\"padding:12px;border-bottom:1px solid var(--border);\">"
     +"<div style=\"font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);margin-bottom:8px;\">Auto-Caption</div>"
@@ -20040,6 +20094,7 @@ function bcpLandingLoadUrl(){
 function bcpWizardContinueToEdit(){
   _bcpCreativeStep = 3;
   _bcpEditorMode = 'full';
+  _bcpComposeUnlocked = false;
   renderContentStudio();
 }
 
@@ -20054,12 +20109,14 @@ function bcpWizardGoBackToSource(){
   }
   _bcpCreativeStep = 1;
   _bcpEditorMode = 'full';
+  _bcpComposeUnlocked = false;
   renderContentStudio();
 }
 
 function bcpWizardGoBackToCrop(){
   _bcpCreativeStep = 2;
   _bcpEditorMode = 'crop';
+  _bcpComposeUnlocked = false;
   renderContentStudio();
 }
 
@@ -20142,7 +20199,7 @@ function bcpShowFullEditor(){
       "<span style=\"font-size:10px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:.08em;\">Format</span>",
       fmtBtns,
       "<div style=\"flex:1;min-width:8px;\"></div>",
-      "<button type=\"button\" onclick=\"csScrollToUnifiedPreview()\" style=\"padding:6px 12px;background:rgba(232,168,56,.12);border:1px solid rgba(232,168,56,.45);border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;color:#e8a838;\">👁 Preview</button>",
+      "<button type=\"button\" onclick=\"csScrollToUnifiedPreview()\" title=\"Opens caption, channels & schedule when you are ready to post\" style=\"padding:6px 12px;background:rgba(232,168,56,.12);border:1px solid rgba(232,168,56,.45);border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;color:#e8a838;\">📤 Post &amp; preview</button>",
       "<button onclick=\"ceExportImage()\" style=\"padding:6px 14px;background:#22c55e;color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;\">⬇️ Export</button>",
       "<button onclick=\"ceUseInPost()\" style=\"padding:6px 14px;background:#1a4a7c;color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;\">→ Use in Post</button>",
       ((_bcpCreativeStep||1)>=3 ? "<button type=\"button\" onclick=\"bcpWizardGoBackToCrop()\" style=\"padding:6px 12px;background:#222;border:1px solid #333;border-radius:7px;font-size:11px;cursor:pointer;color:#ccc;\">← Crop</button>" : ""),
