@@ -13907,6 +13907,24 @@ let _csView = 'creative'; // calendar | analytics | campaigns (compose merged in
 let _csMonth = new Date().getMonth();
 let _csYear = new Date().getFullYear();
 let _csEditPost = null; // post being edited
+/** Creative wizard: 1 = choose media, 2 = crop/trim, 3 = edit + compose + platform preview */
+let _bcpCreativeStep = 1;
+let _bcpEditorMode = 'full'; // 'full' | 'crop'
+let _bcpSkipLandingOnce = false;
+
+function csEnsureWizardStyles(){
+  if(document.getElementById('cs-wizard-styles')) return;
+  var s = document.createElement('style');
+  s.id = 'cs-wizard-styles';
+  s.textContent = ''
+    + '#cs-unified-root[data-wizard-step="1"] #cs-unified-compose-col,'
+    + '#cs-unified-root[data-wizard-step="1"] #cs-unified-preview-wrap,'
+    + '#cs-unified-root[data-wizard-step="2"] #cs-unified-compose-col,'
+    + '#cs-unified-root[data-wizard-step="2"] #cs-unified-preview-wrap{display:none !important;}'
+    + '#cs-unified-root[data-wizard-step="1"] #cs-unified-editor-col,'
+    + '#cs-unified-root[data-wizard-step="2"] #cs-unified-editor-col{flex:1 1 100% !important;max-width:100% !important;min-width:0 !important;}';
+  document.head.appendChild(s);
+}
 
 function renderContentStudio(){
   const page = document.getElementById('content-studio-page');
@@ -14131,10 +14149,18 @@ function csBuildComposeColumnHTML(p, prefill, isNew, leadPhotos, campaigns){
 function csRenderUnifiedCreate(){
   const area = document.getElementById('cs-content-area');
   if(!area) return;
+  csEnsureWizardStyles();
   const post = _csEditPost;
   const p = post && !post._prefill ? post : {};
   const prefill = post?._prefill || {};
   const isNew = !p.id;
+  let wstep = _bcpCreativeStep;
+  if(p && p.id){ wstep = 3; }
+  else if(isNew && typeof _ceState !== 'undefined' && _ceState && _ceState.image && wstep === 1){
+    wstep = 2;
+    _bcpEditorMode = 'crop';
+  }
+  _bcpCreativeStep = wstep;
   const campaigns = csGetCampaigns();
   if(!isNew && p.videoData){
     window._cePendingVideoUrl=p.videoData;
@@ -14156,7 +14182,7 @@ function csRenderUnifiedCreate(){
   const composeHtml = csBuildComposeColumnHTML(p, prefill, isNew, leadPhotos, campaigns);
   const previewInner = csPreviewHTML(p);
   area.innerHTML = ''
-    + '<div id="cs-unified-root" style="display:flex;flex-direction:row;height:100%;min-height:0;overflow:hidden;align-items:stretch;">'
+    + '<div id="cs-unified-root" data-wizard-step="'+wstep+'" style="display:flex;flex-direction:row;height:100%;min-height:0;overflow:hidden;align-items:stretch;">'
     + '<div id="cs-unified-editor-col" style="flex:1;min-width:0;min-height:0;overflow:hidden;display:flex;flex-direction:column;"></div>'
     + '<div id="cs-unified-compose-col" style="width:min(400px,38vw);min-width:280px;max-width:460px;flex-shrink:0;overflow-y:auto;border-left:1px solid var(--border);background:var(--bg);-webkit-overflow-scrolling:touch;">'
     + composeHtml
@@ -14174,6 +14200,18 @@ function csRenderUnifiedCreate(){
 }
 function csOpenCompose(postOrId){
   let post = null;
+  if(postOrId === null || postOrId === undefined){
+    _bcpCreativeStep = 1;
+    _bcpEditorMode = 'full';
+    if(typeof _ceState !== 'undefined' && _ceState){
+      _ceState.texts = [];
+      _ceState.shapes = [];
+      _ceState.image = null;
+      _ceState.isVideo = false;
+      _ceState.videoUrl = null;
+      _ceState.videoFile = null;
+    }
+  }
   if(typeof postOrId==='string'){
     post = csGetPosts().find(p=>p.id===postOrId)||null;
   } else if(postOrId && typeof postOrId==='object'){
@@ -14181,6 +14219,10 @@ function csOpenCompose(postOrId){
   }
   _csEditPost = post;
   _csView = 'creative';
+  if(post && post.id){
+    _bcpCreativeStep = 3;
+    _bcpEditorMode = 'full';
+  }
   renderContentStudio();
 }
 
@@ -14189,8 +14231,8 @@ function csPreviewHTML(p){
   const platforms = p.platforms||['instagram'];
   const plat = CS_PLATFORMS.find(pl=>pl.id===platforms[0]) || CS_PLATFORMS[0];
   const rep = currentRep || 'Your Brand';
-  const vid = window._cePendingVideoUrl || p.videoData || null;
-  const img = (!vid && (window._cePendingImage || p.imageData)) || null;
+  const vid = p.videoData || window._cePendingVideoUrl || null;
+  const img = (!vid && (p.imageData || window._cePendingImage)) || null;
   const avatarUrl = (_currentUserObj?.avatar) || null;
   const avatarHtml = avatarUrl
     ? '<img src="'+avatarUrl+'" style="width:32px;height:32px;border-radius:50%;object-fit:cover;">'
@@ -14235,6 +14277,22 @@ function csPreviewHTML(p){
   +'</div>';
 }
 
+function csGetLivePreviewMedia(){
+  var out = { videoData: null, imageData: null };
+  if(typeof _ceState === 'undefined' || !_ceState) return out;
+  if(_ceState.isVideo && _ceState.videoUrl){
+    out.videoData = _ceState.videoUrl;
+    return out;
+  }
+  if(!_ceState.isVideo && _ceState.image){
+    var c = document.getElementById('ce-canvas');
+    if(c){
+      try{ out.imageData = c.toDataURL('image/jpeg', 0.72); }catch(e){}
+    }
+  }
+  return out;
+}
+
 function csUpdateCharCount(){
   const ta = document.getElementById('cs-caption');
   const cc = document.getElementById('cs-char-count');
@@ -14246,15 +14304,28 @@ function csUpdateCharCount(){
   const limit = plat?.charLimit || 2200;
   cc.textContent = len+'/'+limit;
   cc.style.color = len > limit ? '#f74f6a' : len > limit*0.9 ? '#f59e0b' : 'var(--text3)';
-  // Live-update preview with current caption AND image
+  const live = csGetLivePreviewMedia();
+  var useVid = live.videoData
+    || ((window._cePendingMediaType === 'video') ? (window._cePendingVideoData || window._cePendingVideoUrl) : null);
+  var useImg = (!useVid && (live.imageData
+    || ((window._cePendingMediaType === 'video') ? null : (window._cePendingImage || null))));
   const pp = document.getElementById('cs-preview-panel');
-  if(pp)   pp.innerHTML = csPreviewHTML({
+  if(pp) pp.innerHTML = csPreviewHTML({
     caption: ta.value,
     platforms: platforms,
-    imageData: (window._cePendingMediaType==='video') ? null : (window._cePendingImage || null),
-    videoData: (window._cePendingMediaType==='video') ? (window._cePendingVideoData || window._cePendingVideoUrl) : null,
+    imageData: useImg,
+    videoData: useVid,
   });
 }
+
+window.csSchedulePreviewSync = function(){
+  if((_bcpCreativeStep || 1) < 3) return;
+  if(window._csPrevSyncT) clearTimeout(window._csPrevSyncT);
+  window._csPrevSyncT = setTimeout(function(){
+    window._csPrevSyncT = null;
+    if(typeof csUpdateCharCount === 'function') csUpdateCharCount();
+  }, 420);
+};
 
 
 
@@ -15217,7 +15288,8 @@ function ceVideoPlay(){
   v.muted=_ceState.videoMuted||false; v.play();
   if(window._bcpAudioEl&&!window._bcpMusicIsYoutube){
     try{
-      window._bcpAudioEl.currentTime=window._bcpMusicTrimStart||0;
+      var m0=(window._bcpMusicTrimStart||0)+bcpGetMusicOffsetSec();
+      window._bcpAudioEl.currentTime=Math.max(0, m0);
       window._bcpAudioEl.play();
     }catch(e){}
   }
@@ -15324,7 +15396,10 @@ function bcpExportDoneNewProject(){
     _ceState.texts=[]; _ceState.shapes=[]; _ceState.image=null; _ceState.isVideo=false;
     _ceState.videoUrl=null; _ceState.videoFile=null;
   }
-  csOpenCreativeEditor();
+  _bcpCreativeStep = 1;
+  _bcpEditorMode = 'full';
+  if(typeof renderContentStudio === 'function') renderContentStudio();
+  else csOpenCreativeEditor();
 }
 function bcpShowExportDone(meta){
   bcpCloseExportDone();
@@ -15502,15 +15577,17 @@ function ceExportVideo(){
     v.currentTime=ts; v.muted=_ceState.videoMuted||false;
     if(window._bcpMusicTrimIv){clearInterval(window._bcpMusicTrimIv); window._bcpMusicTrimIv=null;}
     if(wantMusic&&musicEl){
-      var m0=window._bcpMusicTrimStart||0;
+      bcpReadPhase2FromInputs();
+      var m0=(window._bcpMusicTrimStart||0)+bcpGetMusicOffsetSec();
+      var m0Loop=window._bcpMusicTrimStart||0;
       var m1=window._bcpMusicTrimEnd;
-      if(!m1||m1<=m0) m1=musicEl.duration||999;
+      if(!m1||m1<=m0Loop) m1=musicEl.duration||999;
       if(isFinite(musicEl.duration)&&m1>musicEl.duration) m1=musicEl.duration;
-      musicEl.currentTime=m0;
+      musicEl.currentTime=Math.max(0,m0);
       musicEl.play().catch(function(){});
       window._bcpMusicTrimIv=setInterval(function(){
         if(!musicEl) return;
-        if(musicEl.currentTime>=m1-0.08) musicEl.currentTime=m0;
+        if(musicEl.currentTime>=m1-0.08) musicEl.currentTime=Math.max(0,m0Loop);
       }, 50);
     }
     setTimeout(function(){
@@ -15609,6 +15686,9 @@ function ceRedraw(){
       ctx.setLineDash([]);
     }
   });
+  if(typeof _ceState !== 'undefined' && _ceState && !_ceState.isVideo && document.getElementById('cs-preview-panel')){
+    if(typeof window.csSchedulePreviewSync === 'function') window.csSchedulePreviewSync();
+  }
 }
 
 // Canvas mouse events — drag to move elements
@@ -16088,6 +16168,8 @@ function ceUseInPost(){
   window._cePendingVideoData=null;
   window._cePendingMediaType=null;
   function goCompose(){
+    _bcpCreativeStep = 3;
+    _bcpEditorMode = 'full';
     _csView='creative';
     csRenderView();
     setTimeout(function(){ csInsertComposeMediaPreview&&csInsertComposeMediaPreview(); if(csScrollToUnifiedPreview) csScrollToUnifiedPreview(true); }, 100);
@@ -18827,6 +18909,82 @@ var BCP_PRESET_MUSIC={
   chill1:"https://assets.mixkit.co/music/preview/mixkit-driving-ambition-32.mp3",
   epic1:"https://assets.mixkit.co/music/preview/mixkit-happy-vibes-482.mp3"
 };
+// Phase 2 — music sync (browser): fine offset, BPM grid, tap tempo
+if(typeof window._bcpMusicSyncOffsetMs !== 'number') window._bcpMusicSyncOffsetMs = 0;
+if(typeof window._bcpMusicBPM !== 'number') window._bcpMusicBPM = 0;
+if(typeof window._bcpMusicBeatAnchor !== 'number') window._bcpMusicBeatAnchor = 0;
+window._bcpTapTimes = window._bcpTapTimes || [];
+
+function bcpGetMusicOffsetSec(){
+  return (window._bcpMusicSyncOffsetMs || 0) / 1000;
+}
+function bcpRefreshMusicTrimInputs(){
+  var s=document.getElementById('bcp-music-tstart'), e=document.getElementById('bcp-music-tend');
+  if(s) s.value = (window._bcpMusicTrimStart != null ? window._bcpMusicTrimStart : 0).toFixed(2);
+  if(e) e.value = (window._bcpMusicTrimEnd != null ? window._bcpMusicTrimEnd : 0).toFixed(2);
+  if(typeof ceSyncMusicTrimMiniFromState === 'function') ceSyncMusicTrimMiniFromState();
+}
+function bcpReadPhase2FromInputs(){
+  var bpmEl=document.getElementById('bcp-bpm-input'), offEl=document.getElementById('bcp-sync-offset-ms'), anchEl=document.getElementById('bcp-beat-anchor');
+  if(bpmEl){ var b=parseFloat(bpmEl.value); window._bcpMusicBPM = (isFinite(b) && b>0) ? b : 0; }
+  if(offEl){ var o=parseFloat(offEl.value); window._bcpMusicSyncOffsetMs = isFinite(o) ? Math.max(-500, Math.min(500, o)) : 0; }
+  if(anchEl){ var a=parseFloat(anchEl.value); window._bcpMusicBeatAnchor = isFinite(a) ? Math.max(0, a) : 0; }
+}
+function bcpUpdateBeatReadout(){
+  var el=document.getElementById('bcp-beat-readout');
+  if(!el) return;
+  var bpm=window._bcpMusicBPM||0;
+  if(bpm>=40 && bpm<=220){
+    var beat=60/bpm;
+    el.textContent='Beat '+beat.toFixed(2)+'s · grid from anchor '+((window._bcpMusicBeatAnchor||0).toFixed(2))+'s';
+  }else{
+    el.textContent='Set BPM (type or tap) to snap “Music In” to beats';
+  }
+}
+function bcpTapTempoTap(){
+  var now=Date.now();
+  window._bcpTapTimes.push(now);
+  if(window._bcpTapTimes.length>10) window._bcpTapTimes.shift();
+  var taps=window._bcpTapTimes;
+  if(taps.length<2){ showToast('Tap again on the beat'); return; }
+  var intervals=[];
+  for(var i=1;i<taps.length;i++) intervals.push(taps[i]-taps[i-1]);
+  var avg=intervals.reduce(function(a,b){return a+b;},0)/intervals.length;
+  if(avg<180 || avg>3000){ showToast('Tap closer to a steady beat'); return; }
+  var bpm=Math.round(60000/avg);
+  if(bpm<40 || bpm>220){ showToast('BPM out of range — tap steadier'); return; }
+  window._bcpMusicBPM=bpm;
+  var inp=document.getElementById('bcp-bpm-input');
+  if(inp) inp.value=String(bpm);
+  bcpUpdateBeatReadout();
+  showToast('~'+bpm+' BPM');
+}
+function bcpSnapMusicTrimToBeat(){
+  bcpReadPhase2FromInputs();
+  var bpm=window._bcpMusicBPM||0;
+  if(bpm<40 || bpm>220){ showToast('Set BPM first (type or tap)'); return; }
+  var beat=60/bpm;
+  var anchor=window._bcpMusicBeatAnchor||0;
+  var m0=window._bcpMusicTrimStart||0;
+  var k=Math.round((m0-anchor)/beat);
+  var snapped=anchor+k*beat;
+  if(snapped<0) snapped=0;
+  var el=window._bcpAudioEl;
+  if(el && isFinite(el.duration) && snapped>=el.duration) snapped=Math.max(0, el.duration-beat*0.25);
+  window._bcpMusicTrimStart=snapped;
+  bcpRefreshMusicTrimInputs();
+  if(typeof bcpSetMusicTrim === 'function') bcpSetMusicTrim();
+  showToast('Music In snapped to beat');
+}
+function bcpMarkBeatAnchorHere(){
+  var el=window._bcpAudioEl;
+  if(!el || !el.src || window._bcpMusicIsYoutube){ showToast('Play a loaded track first'); return; }
+  window._bcpMusicBeatAnchor=el.currentTime||0;
+  var anch=document.getElementById('bcp-beat-anchor');
+  if(anch) anch.value=(window._bcpMusicBeatAnchor).toFixed(2);
+  bcpUpdateBeatReadout();
+  showToast('Anchor = '+window._bcpMusicBeatAnchor.toFixed(2)+'s (first beat here)');
+}
 function bcpHighlightMusicButtons(activeId){
   ["hype1","chill1","epic1","none"].forEach(function(k){
     var b=document.getElementById("bcp-music-"+k);if(!b)return;
@@ -18962,6 +19120,7 @@ function bcpInitMusicTrimUI(){
     if(e){ e.max=d; if(!e.value||parseFloat(e.value)>d) e.value=Math.min(60,d).toFixed(1); window._bcpMusicTrimEnd=parseFloat(e.value)||d; }
     ceSyncMusicTrimMiniFromState();
     ceUpdateVideoBarMusicUI();
+    if(typeof bcpUpdateBeatReadout==="function") bcpUpdateBeatReadout();
   }
   if(el.readyState>=1) apply();
   else el.addEventListener("loadedmetadata", apply, {once:true});
@@ -19016,10 +19175,9 @@ function bcpPreviewMusicWithVideo(){
   var m=window._bcpAudioEl;
   if(!v){showToast("Load a video first");return;}
   if(!m||!m.src||window._bcpMusicIsYoutube){showToast("Choose a preset, upload MP3/WAV, or paste a direct audio URL (not YouTube)");return;}
+  bcpReadPhase2FromInputs();
   v.currentTime=_ceState.videoTrimStart||0;
   v.muted=!!_ceState.videoMuted;
-  m.currentTime=window._bcpMusicTrimStart||0;
-  m.play().catch(function(){});
   ceVideoPlay&&ceVideoPlay();
   showToast("Preview with music — use the bar to pause");
 }
@@ -19746,6 +19904,27 @@ function bcpOpenStudioPanel(){
     +"<span style=\"font-size:10px;color:var(--text3);\">→</span>"
     +"<input type=\"number\" id=\"bcp-music-tend\" min=\"0\" value=\"30\" step=\"0.1\" title=\"End\" style=\"width:72px;padding:5px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:11px;\" onchange=\"bcpSetMusicTrim()\">"
     +"</div></div>"
+    +"<div id=\"bcp-phase2-sync\" style=\"margin-top:10px;padding-top:10px;border-top:1px dashed var(--border);\">"
+    +"<div style=\"font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--gold2);margin-bottom:6px;\">Phase 2 — Rhythm &amp; sync</div>"
+    +"<div style=\"font-size:9px;color:var(--text3);margin-bottom:8px;line-height:1.4;\">Align music with your trim: fine-tune ms offset, set BPM (or tap), then snap “Music In” to the beat grid.</div>"
+    +"<div style=\"display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:8px;\">"
+    +"<label style=\"font-size:9px;color:var(--text2);\">BPM</label>"
+    +"<input type=\"number\" id=\"bcp-bpm-input\" min=\"0\" max=\"300\" step=\"1\" placeholder=\"120\" style=\"width:56px;padding:5px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:11px;\" onchange=\"bcpReadPhase2FromInputs();bcpUpdateBeatReadout();\">"
+    +"<button type=\"button\" onclick=\"bcpTapTempoTap()\" style=\"padding:5px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;font-size:10px;font-weight:700;cursor:pointer;color:var(--text2);\">Tap tempo</button>"
+    +"</div>"
+    +"<div id=\"bcp-beat-readout\" style=\"font-size:9px;color:var(--text3);margin-bottom:8px;\"></div>"
+    +"<div style=\"display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:8px;\">"
+    +"<label style=\"font-size:9px;color:var(--text2);\">Sync ±ms</label>"
+    +"<input type=\"number\" id=\"bcp-sync-offset-ms\" min=\"-500\" max=\"500\" step=\"5\" value=\"0\" title=\"Negative = music earlier\" style=\"width:64px;padding:5px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:11px;\" onchange=\"bcpReadPhase2FromInputs();\">"
+    +"<span style=\"font-size:8px;color:var(--text3);\">Lead/lag vs video</span>"
+    +"</div>"
+    +"<div style=\"display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:8px;\">"
+    +"<label style=\"font-size:9px;color:var(--text2);\">Beat anchor (s)</label>"
+    +"<input type=\"number\" id=\"bcp-beat-anchor\" min=\"0\" step=\"0.01\" value=\"0\" style=\"width:72px;padding:5px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:11px;\" onchange=\"bcpReadPhase2FromInputs();bcpUpdateBeatReadout();\">"
+    +"<button type=\"button\" onclick=\"bcpMarkBeatAnchorHere()\" style=\"padding:5px 8px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;font-size:9px;font-weight:700;cursor:pointer;color:var(--text2);\">Set from playhead</button>"
+    +"</div>"
+    +"<button type=\"button\" onclick=\"bcpSnapMusicTrimToBeat()\" style=\"width:100%;padding:8px;background:rgba(232,168,56,.12);border:1px solid rgba(232,168,56,.35);border-radius:7px;font-size:10px;font-weight:800;cursor:pointer;color:var(--gold2);\">Snap “Music In” to nearest beat</button>"
+    +"</div>"
     +"<label id=\"bcp-music-upload-label\" style=\"display:block;width:100%;padding:8px;background:var(--surface2);border:1px dashed var(--border);border-radius:7px;text-align:center;cursor:pointer;font-size:10px;color:var(--text3);\">"
     +"Upload MP3 / WAV<input type=\"file\" accept=\".mp3,.wav,.m4a,audio/mpeg,audio/wav,audio/*\" style=\"display:none\" onchange=\"bcpUploadMusic(event)\"></label>"
     +"</div>"
@@ -19765,6 +19944,11 @@ function bcpOpenStudioPanel(){
     if(!t||t==="none") bcpHighlightMusicButtons("none");
     else if(t==="upload"||t==="url") bcpHighlightMusicButtons("custom");
     else bcpHighlightMusicButtons(t);
+    var bi=document.getElementById("bcp-bpm-input"), off=document.getElementById("bcp-sync-offset-ms"), ba=document.getElementById("bcp-beat-anchor");
+    if(bi && (window._bcpMusicBPM||0)>0) bi.value=String(Math.round(window._bcpMusicBPM));
+    if(off) off.value=String(Math.round(window._bcpMusicSyncOffsetMs||0));
+    if(ba) ba.value=(window._bcpMusicBeatAnchor!=null?window._bcpMusicBeatAnchor:0).toFixed(2);
+    if(typeof bcpUpdateBeatReadout==="function") bcpUpdateBeatReadout();
   },0);
 }
 
@@ -19780,8 +19964,9 @@ function csOpenCreativeEditor(opts){
   if(!area) return;
   _csView = "creative";
 
-  // If no content loaded yet, show the landing screen
-  if(!_ceState || !_ceState.image) {
+  // Step 1: landing until user picks media (unless we are mounting editor while file loads)
+  if((!_ceState || !_ceState.image) && !_bcpSkipLandingOnce) {
+    if((_bcpCreativeStep || 1) <= 1){
     area.innerHTML = "";
     const landing = document.createElement("div");
     landing.id = "bcp-landing";
@@ -19811,24 +19996,74 @@ function csOpenCreativeEditor(opts){
       "</div>",
       "<div style=\"display:flex;gap:8px;align-items:center;width:100%;max-width:420px;\">",
         "<input id=\"bcp-land-url\" placeholder=\"Or paste a video URL (.mp4)...\" style=\"flex:1;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);border-radius:10px;padding:10px 14px;color:#fff;font-size:12px;outline:none;\">",
-        "<button onclick=\"var u=document.getElementById(\'bcp-land-url\');u&&u.value&&(typeof ceLoadVideoUrl===\'function\'?ceLoadVideoUrl():null)\" style=\"padding:10px 16px;background:rgba(124,58,237,.8);color:#fff;border:none;border-radius:10px;font-size:12px;cursor:pointer;font-weight:700;\">Load</button>",
+        "<button type=\"button\" onclick=\"bcpLandingLoadUrl()\" style=\"padding:10px 16px;background:rgba(124,58,237,.8);color:#fff;border:none;border-radius:10px;font-size:12px;cursor:pointer;font-weight:700;\">Load</button>",
       "</div>"
     ].join("");
     area.appendChild(landing);
     return;
+    }
   }
 
-  // Content is loaded - show the full editor
   bcpShowFullEditor();
 }
 
 function bcpLandingLoad(evt){
   var file = evt.target.files[0]; if(!file) return;
-  // Load the file - it will set _ceState.image and _ceState.format
+  _bcpCreativeStep = 2;
+  _bcpEditorMode = 'crop';
+  _bcpSkipLandingOnce = true;
+  renderContentStudio();
   var fakeEvt = {target:{files:[file]}};
-  ceLoadFile(fakeEvt);
-  // Show the editor after enough time for video metadata to load
-  setTimeout(function(){ bcpShowFullEditor(); }, 800);
+  setTimeout(function(){ ceLoadFile(fakeEvt); }, 80);
+  setTimeout(function(){ _bcpSkipLandingOnce = false; }, 1800);
+}
+
+function bcpLandingLoadUrl(){
+  var u = document.getElementById('bcp-land-url');
+  if(!u || !u.value.trim()){ showToast('Paste a direct .mp4 URL'); return; }
+  _bcpCreativeStep = 2;
+  _bcpEditorMode = 'crop';
+  _bcpSkipLandingOnce = true;
+  renderContentStudio();
+  setTimeout(function(){
+    var inp = document.getElementById('ce-vurl');
+    if(inp){ inp.value = u.value.trim(); ceLoadVideoUrl(); }
+    setTimeout(function(){ _bcpSkipLandingOnce = false; }, 1800);
+  }, 100);
+}
+
+function bcpWizardContinueToEdit(){
+  _bcpCreativeStep = 3;
+  _bcpEditorMode = 'full';
+  renderContentStudio();
+}
+
+function bcpWizardGoBackToSource(){
+  if(typeof _ceState !== 'undefined' && _ceState){
+    _ceState.texts = [];
+    _ceState.shapes = [];
+    _ceState.image = null;
+    _ceState.isVideo = false;
+    _ceState.videoUrl = null;
+    _ceState.videoFile = null;
+  }
+  _bcpCreativeStep = 1;
+  _bcpEditorMode = 'full';
+  renderContentStudio();
+}
+
+function bcpWizardGoBackToCrop(){
+  _bcpCreativeStep = 2;
+  _bcpEditorMode = 'crop';
+  renderContentStudio();
+}
+
+function bcpWizardBackFromEditor(){
+  if(typeof _ceState !== 'undefined' && _ceState && _ceState.image && (_bcpCreativeStep || 1) >= 3){
+    bcpWizardGoBackToCrop();
+  } else {
+    bcpWizardGoBackToSource();
+  }
 }
 
 function bcpEditorTabSetActive(which){
@@ -19878,12 +20113,41 @@ function bcpApplyToolsCollapsePreference(){
 }
 
 function bcpShowFullEditor(){
-  var origView = _csView;
   _csView = "creative";
   var area = csGetCreativeMountEl();
   if(!area) return;
 
+  var cropOnly = (_bcpEditorMode === "crop");
   var fmtBtns=Object.entries(CE_FORMATS).map(function(e2){var k=e2[0],f=e2[1];return "<button onclick=\"ceSetFormat(\'"+k+"\')\" style=\"padding:4px 10px;border-radius:6px;font-size:11px;cursor:pointer;border:1px solid "+(_ceState.format===k?"#e8a838":"#333")+";background:"+(_ceState.format===k?"#e8a838":"transparent")+";color:"+(_ceState.format===k?"#000":"#ccc")+";\">"+f.icon+" "+f.label+"</button>";}).join("");
+
+  var topBar = cropOnly
+    ? [
+      "<div style=\"flex-shrink:0;padding:8px 12px;border-bottom:1px solid #2a2a2a;display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#141414;\">",
+      "<span style=\"font-size:11px;font-weight:900;color:#e8a838;white-space:nowrap;\">Step 2 — Crop &amp; trim</span>",
+      "<span style=\"font-size:10px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:.08em;\">Format</span>",
+      fmtBtns,
+      "<div style=\"flex:1;min-width:8px;\"></div>",
+      "<button type=\"button\" onclick=\"bcpWizardContinueToEdit()\" style=\"padding:8px 16px;background:linear-gradient(135deg,#e8a838,#d4901f);color:#000;border:none;border-radius:8px;font-size:12px;font-weight:900;cursor:pointer;\">Continue to editing →</button>",
+      "<button type=\"button\" onclick=\"bcpWizardGoBackToSource()\" style=\"padding:6px 12px;background:#222;border:1px solid #333;border-radius:7px;font-size:11px;cursor:pointer;color:#ccc;\">← Change media</button>",
+      "</div>"
+    ].join("")
+    : [
+      "<div style=\"flex-shrink:0;padding:8px 12px;border-bottom:1px solid #2a2a2a;display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#141414;\">",
+      ((_bcpCreativeStep||1)>=3 ? "<span style=\"font-size:10px;font-weight:700;color:#666;white-space:nowrap;\">Step 3 — Edit &amp; publish</span>" : ""),
+      "<span style=\"font-size:10px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:.08em;\">Format</span>",
+      fmtBtns,
+      "<div style=\"flex:1;min-width:8px;\"></div>",
+      "<button type=\"button\" onclick=\"csScrollToUnifiedPreview()\" style=\"padding:6px 12px;background:rgba(232,168,56,.12);border:1px solid rgba(232,168,56,.45);border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;color:#e8a838;\">👁 Preview</button>",
+      "<button onclick=\"ceExportImage()\" style=\"padding:6px 14px;background:#22c55e;color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;\">⬇️ Export</button>",
+      "<button onclick=\"ceUseInPost()\" style=\"padding:6px 14px;background:#1a4a7c;color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;\">→ Use in Post</button>",
+      ((_bcpCreativeStep||1)>=3 ? "<button type=\"button\" onclick=\"bcpWizardGoBackToCrop()\" style=\"padding:6px 12px;background:#222;border:1px solid #333;border-radius:7px;font-size:11px;cursor:pointer;color:#ccc;\">← Crop</button>" : ""),
+      "<button type=\"button\" onclick=\"bcpWizardBackFromEditor()\" style=\"padding:6px 12px;background:#222;border:1px solid #333;border-radius:7px;font-size:11px;cursor:pointer;color:#ccc;\">← Back</button>",
+      "</div>"
+    ].join("");
+
+  var stackStyle = cropOnly
+    ? "flex:1 1 auto;min-height:200px;display:flex;flex-direction:column;min-height:0;overflow:hidden;background:#050505;"
+    : "flex:1 1 58%;min-height:160px;display:flex;flex-direction:column;min-height:0;overflow:hidden;background:#050505;";
 
   var quickTools=[
     "<div style=\"flex-shrink:0;display:flex;align-items:center;gap:6px;padding:8px 10px;border-bottom:1px solid #2a2a2a;background:#161616;overflow-x:auto;-webkit-overflow-scrolling:touch;\">",
@@ -19910,22 +20174,13 @@ function bcpShowFullEditor(){
     "</div>"
   ].join("");
 
-  area.innerHTML = [
-    "<div id=\"bcp-editor-layout\" style=\"display:flex;flex-direction:column;height:100%;min-height:0;max-height:100%;overflow:hidden;background:#0a0a0a;border-radius:0;\">",
-      "<div style=\"flex-shrink:0;padding:8px 12px;border-bottom:1px solid #2a2a2a;display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#141414;\">",
-        "<span style=\"font-size:10px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:.08em;\">Format</span>",
-        fmtBtns,
-        "<div style=\"flex:1;min-width:8px;\"></div>",
-        "<button type=\"button\" onclick=\"csScrollToUnifiedPreview()\" style=\"padding:6px 12px;background:rgba(232,168,56,.12);border:1px solid rgba(232,168,56,.45);border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;color:#e8a838;\">👁 Preview</button>",
-        "<button onclick=\"ceExportImage()\" style=\"padding:6px 14px;background:#22c55e;color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;\">⬇️ Export</button>",
-        "<button onclick=\"ceUseInPost()\" style=\"padding:6px 14px;background:#1a4a7c;color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;\">→ Use in Post</button>",
-        "<button onclick=\"csOpenCreativeEditor()\" style=\"padding:6px 12px;background:#222;border:1px solid #333;border-radius:7px;font-size:11px;cursor:pointer;color:#ccc;\">← Back</button>",
-      "</div>",
-      "<div id=\"ce-preview-stack\" style=\"flex:1 1 58%;min-height:160px;display:flex;flex-direction:column;min-height:0;overflow:hidden;background:#050505;\">",
-        "<div id=\"ce-canvas-wrap\" style=\"flex:1 1 auto;min-height:0;overflow:hidden;display:flex;align-items:flex-start;justify-content:center;background:#050505;position:relative;\">",
-          "<canvas id=\"ce-canvas\" style=\"box-shadow:0 12px 48px rgba(0,0,0,.75);cursor:crosshair;max-width:100%;max-height:100%;object-fit:contain;\"></canvas>",
-        "</div>",
-      "</div>",
+  var bottomBlock = cropOnly
+    ? [
+      "<div id=\"bcp-bottom-tools\" style=\"flex:0 0 auto;padding:10px 14px 14px;border-top:1px solid #252525;background:#121212;\">",
+      "<div style=\"font-size:10px;color:#888;text-align:center;line-height:1.45;max-width:520px;margin:0 auto;\">Pick a <strong style=\"color:#ccc;\">Format</strong>, adjust fit, and trim. Then continue for text, music, captions &amp; scheduling.</div>",
+      "</div>"
+    ].join("")
+    : [
       "<div id=\"bcp-bottom-tools\" style=\"flex:1 1 42%;min-height:120px;max-height:min(40vh,560px);display:flex;flex-direction:column;border-top:1px solid #252525;background:#121212;min-height:0;\">",
         "<div id=\"bcp-tools-collapse-bar\" style=\"flex-shrink:0;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 10px;border-bottom:1px solid #2a2a2a;background:#161616;\">",
           "<span style=\"font-size:10px;font-weight:600;color:#888;letter-spacing:.04em;\">Studio tools <span style=\"color:#555;font-weight:500;\">— edit, sound, export</span></span>",
@@ -19940,7 +20195,18 @@ function bcpShowFullEditor(){
           "</div>",
         "</div>",
         "</div>",
+      "</div>"
+    ].join("");
+
+  area.innerHTML = [
+    "<div id=\"bcp-editor-layout\" style=\"display:flex;flex-direction:column;height:100%;min-height:0;max-height:100%;overflow:hidden;background:#0a0a0a;border-radius:0;\">",
+      topBar,
+      "<div id=\"ce-preview-stack\" style=\""+stackStyle+"\">",
+        "<div id=\"ce-canvas-wrap\" style=\"flex:1 1 auto;min-height:0;overflow:hidden;display:flex;align-items:flex-start;justify-content:center;background:#050505;position:relative;\">",
+          "<canvas id=\"ce-canvas\" style=\"box-shadow:0 12px 48px rgba(0,0,0,.75);cursor:crosshair;max-width:100%;max-height:100%;object-fit:contain;\"></canvas>",
+        "</div>",
       "</div>",
+      bottomBlock,
     "</div>"
   ].join("");
 
@@ -19951,9 +20217,11 @@ function bcpShowFullEditor(){
       setTimeout(function(){ ceShowVideoPanel && ceShowVideoPanel(); }, 80);
     }
     setTimeout(function(){
-      bcpOpenStudioPanel && bcpOpenStudioPanel();
-      bcpEditorTabSetActive("edit");
-      bcpApplyToolsCollapsePreference && bcpApplyToolsCollapsePreference();
+      if(!cropOnly){
+        bcpOpenStudioPanel && bcpOpenStudioPanel();
+        bcpEditorTabSetActive("edit");
+        bcpApplyToolsCollapsePreference && bcpApplyToolsCollapsePreference();
+      }
     }, 100);
   }, 50);
 }
