@@ -15567,6 +15567,8 @@ function ceExportVideo(){
   const mime=MediaRecorder.isTypeSupported('video/webm;codecs=vp9')?'video/webm;codecs=vp9':'video/webm';
   const musicEl=window._bcpAudioEl;
   const wantMusic=musicEl&&musicEl.src;
+  const isVoiceover = !!window._bcpVoiceoverMode;
+  const voDelayMs = Math.max(0, (window._bcpVoiceoverStartOffsetSec||0) * 1000);
   const Ctx=window.AudioContext||window.webkitAudioContext;
 
   function buildOutputStream(cb){
@@ -15595,7 +15597,7 @@ function ceExportVideo(){
     }catch(e1){}
     try{
       if(musicEl.captureStream){
-        musicEl.currentTime=0;
+        musicEl.currentTime=window._bcpMusicTrimStart||0;
         var ms=musicEl.captureStream();
         var mSrc=actx.createMediaStreamSource(ms);
         var gM=actx.createGain();
@@ -15635,21 +15637,33 @@ function ceExportVideo(){
     if(window._bcpMusicTrimIv){clearInterval(window._bcpMusicTrimIv); window._bcpMusicTrimIv=null;}
     if(wantMusic&&musicEl){
       bcpReadPhase2FromInputs();
-      var m0=(window._bcpMusicTrimStart||0)+bcpGetMusicOffsetSec();
-      var m0Loop=window._bcpMusicTrimStart||0;
-      var m1=window._bcpMusicTrimEnd;
-      if(!m1||m1<=m0Loop) m1=musicEl.duration||999;
-      if(isFinite(musicEl.duration)&&m1>musicEl.duration) m1=musicEl.duration;
-      musicEl.currentTime=Math.max(0,m0);
-      musicEl.play().catch(function(){});
-      window._bcpMusicTrimIv=setInterval(function(){
-        if(!musicEl) return;
-        if(musicEl.currentTime>=m1-0.08) musicEl.currentTime=Math.max(0,m0Loop);
-      }, 50);
+      if(isVoiceover){
+        // Voice-over: start once at the recorded offset, do NOT loop.
+        var m0VO=(window._bcpMusicTrimStart||0);
+        musicEl.currentTime=Math.max(0,m0VO);
+        try{ musicEl.pause(); }catch(e){}
+      }else{
+        var m0=(window._bcpMusicTrimStart||0)+bcpGetMusicOffsetSec();
+        var m0Loop=window._bcpMusicTrimStart||0;
+        var m1=window._bcpMusicTrimEnd;
+        if(!m1||m1<=m0Loop) m1=musicEl.duration||999;
+        if(isFinite(musicEl.duration)&&m1>musicEl.duration) m1=musicEl.duration;
+        musicEl.currentTime=Math.max(0,m0);
+        musicEl.play().catch(function(){});
+        window._bcpMusicTrimIv=setInterval(function(){
+          if(!musicEl) return;
+          if(musicEl.currentTime>=m1-0.08) musicEl.currentTime=Math.max(0,m0Loop);
+        }, 50);
+      }
     }
     setTimeout(function(){
       rec.start(100);
       v.play();
+      if(wantMusic&&musicEl&&isVoiceover){
+        setTimeout(function(){
+          try{ musicEl.play(); }catch(e){}
+        }, voDelayMs);
+      }
       setTimeout(function(){
         v.pause();
         if(musicEl) musicEl.pause();
@@ -19059,6 +19073,8 @@ function bcpHighlightMusicButtons(activeId){
   }
 }
 function bcpSelectMusic(id,label){
+  // Voice-over and music should be mutually exclusive in export.
+  window._bcpVoiceoverMode = false;
   bcpHighlightMusicButtons(id);
   if(id==="none"){
     if(window._bcpAudioEl){try{window._bcpAudioEl.pause();}catch(e){} window._bcpAudioEl=null;}
@@ -19342,7 +19358,7 @@ function bcpRenderBeforeAfter(){
     var nm=bk.businessName||"";
     if(nm){ctx.font="bold "+(h*.045)+"px Inter,sans-serif";ctx.fillStyle=bk.primaryColor||"#e8a838";ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillText(nm,w/2,h*.91);}
     ctx.font=(h*.028)+"px Inter,sans-serif";ctx.fillStyle="rgba(255,255,255,.6)";ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillText(bk.tagline||"Professional Auto Detailing",w/2,h*.95);
-    ceRedraw();
+    // Canvas was already drawn; don't call ceRedraw() here or it will clear the generated image.
     showToast("Before & After created! Export or add text overlays.");
   }
   imgB.onload=draw;imgA.onload=draw;
@@ -19423,25 +19439,35 @@ function bcpRenderSlideshow(){
   });
 
   function startRecording(){
-    var stream=canvas.captureStream(30);
-    var mime=MediaRecorder.isTypeSupported("video/webm;codecs=vp9")?"video/webm;codecs=vp9":"video/webm";
-    var rec=new MediaRecorder(stream,{mimeType:mime,videoBitsPerSecond:6000000});
-    var chunks=[];
-    rec.ondataavailable=function(e){if(e.data.size>0)chunks.push(e.data);};
-    rec.onstop=function(){
-      var blob=new Blob(chunks,{type:"video/webm"});
-      var url=URL.createObjectURL(blob);
-      var a=document.createElement("a");a.href=url;a.download="brnno-slideshow-"+Date.now()+".webm";a.click();
-      URL.revokeObjectURL(url);showToast("Slideshow video exported!");
-    };
-    rec.start(100);
+    var canExport = (canvas && typeof canvas.captureStream === 'function' && typeof MediaRecorder !== 'undefined');
+    var rec = null;
+    var chunks = [];
+    if(canExport){
+      var stream=canvas.captureStream(30);
+      var mime=MediaRecorder.isTypeSupported("video/webm;codecs=vp9")?"video/webm;codecs=vp9":"video/webm";
+      rec=new MediaRecorder(stream,{mimeType:mime,videoBitsPerSecond:6000000});
+      rec.ondataavailable=function(e){if(e.data.size>0)chunks.push(e.data);};
+      rec.onstop=function(){
+        var blob=new Blob(chunks,{type:"video/webm"});
+        var url=URL.createObjectURL(blob);
+        var a=document.createElement("a");a.href=url;a.download="brnno-slideshow-"+Date.now()+".webm";a.click();
+        URL.revokeObjectURL(url);showToast("Slideshow video exported!");
+      };
+      rec.start(100);
+    }else{
+      showToast("Video export not supported here — previewing slideshow only.");
+    }
     var fps=30,frameMs=1000/fps;
     var totalFrames=Math.round(photos.length*duration*fps);
     var frame=0;
     var transFrames=Math.round(0.3*fps); // 0.3s transition
 
     function drawFrame(){
-      if(frame>totalFrames){rec.stop();return;}
+      if(frame>totalFrames){
+        if(rec) rec.stop();
+        else showToast("Slideshow preview complete!");
+        return;
+      }
       var photoIdx=Math.floor(frame/(duration*fps));
       if(photoIdx>=photos.length)photoIdx=photos.length-1;
       var localFrame=frame%(duration*fps);
@@ -19545,36 +19571,61 @@ function bcpRenderMultiClip(){
   var w=fmt.w,h=fmt.h;
   var clips=window._clips.slice();
   var clipIdx=0;
-  var videos=clips.map(function(c){var v=document.createElement("video");v.src=c.url;v.muted=true;return v;});
+  var videos=clips.map(function(c){
+    var v=document.createElement("video");
+    v.src=c.url;
+    v.muted=true;
+    v.preload="auto";
+    v.playsInline=true;
+    try{ v.setAttribute("playsinline",""); }catch(e){}
+    return v;
+  });
 
   showToast("Merging "+clips.length+" clips... please wait");
 
-  var stream=canvas.captureStream(30);
-  var mime=MediaRecorder.isTypeSupported("video/webm;codecs=vp9")?"video/webm;codecs=vp9":"video/webm";
-  var rec=new MediaRecorder(stream,{mimeType:mime,videoBitsPerSecond:bitrate});
+  var canExport = (canvas && typeof canvas.captureStream === 'function' && typeof MediaRecorder !== 'undefined');
+  var rec = null;
   var chunks=[];
-  rec.ondataavailable=function(e){if(e.data.size>0)chunks.push(e.data);};
-  rec.onstop=function(){
-    var blob=new Blob(chunks,{type:"video/webm"});var url=URL.createObjectURL(blob);
-    var a=document.createElement("a");a.href=url;a.download="brnno-merged-"+Date.now()+".webm";a.click();
-    URL.revokeObjectURL(url);showToast("Merged video exported!");
-  };
+  if(canExport){
+    var stream=canvas.captureStream(30);
+    var mime=MediaRecorder.isTypeSupported("video/webm;codecs=vp9")?"video/webm;codecs=vp9":"video/webm";
+    rec=new MediaRecorder(stream,{mimeType:mime,videoBitsPerSecond:bitrate});
+    rec.ondataavailable=function(e){if(e.data.size>0)chunks.push(e.data);};
+    rec.onstop=function(){
+      var blob=new Blob(chunks,{type:"video/webm"});var url=URL.createObjectURL(blob);
+      var a=document.createElement("a");a.href=url;a.download="brnno-merged-"+Date.now()+".webm";a.click();
+      URL.revokeObjectURL(url);showToast("Merged video exported!");
+    };
+    rec.start(100);
+  }else{
+    showToast("Video export not supported here — previewing merge only.");
+  }
 
   function playNext(){
-    if(clipIdx>=videos.length){rec.stop();return;}
+    if(clipIdx>=videos.length){
+      if(rec) rec.stop();
+      else showToast("Merge preview complete!");
+      return;
+    }
     var vid=videos[clipIdx];
     vid.onloadedmetadata=function(){
-      vid.play();
-      function frame(){
-        if(vid.ended||vid.paused){clipIdx++;playNext();return;}
-        ctx.drawImage(vid,0,0,w,h);
+      try{ vid.currentTime = 0; }catch(e){}
+      vid.play().then(function(){
+        function frame(){
+          if(vid.ended||vid.paused){clipIdx++;playNext();return;}
+          ctx.drawImage(vid,0,0,w,h);
+          requestAnimationFrame(frame);
+        }
         requestAnimationFrame(frame);
-      }
-      requestAnimationFrame(frame);
+      }).catch(function(){
+        // Autoplay can be blocked on some mobile browsers — draw a frame and move on.
+        try{ ctx.drawImage(vid,0,0,w,h); }catch(e){}
+        clipIdx++;
+        playNext();
+      });
     };
     vid.load();
   }
-  rec.start(100);
   playNext();
 }
 
@@ -19626,28 +19677,74 @@ window._bcpVORecorder=null;window._bcpVOChunks=[];window._bcpVOBlob=null;window.
 function bcpOpenVoiceover(){
   var ex=document.getElementById("bcp-vo-modal");if(ex)ex.remove();
   var ov=document.createElement("div");ov.id="bcp-vo-modal";
-  ov.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:9999;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(6px);";
-  ov.innerHTML="<div style=\"background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:24px;width:420px;max-width:95vw;\">"
-    +"<div style=\"display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;\">"
+  ov.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:9999;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(6px);padding:12px;";
+
+  var vurl = (_ceState && _ceState.isVideo && _ceState.videoUrl) ? _ceState.videoUrl : '';
+  ov.innerHTML="<div style=\"background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:18px;width:560px;max-width:95vw;max-height:92vh;overflow:auto;\">"
+    +"<div style=\"display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;gap:10px;\">"
     +"<div style=\"font-size:18px;font-weight:900;color:var(--text);\">🎙️ Voice-Over</div>"
     +"<button onclick=\"bcpVOClose()\" style=\"background:none;border:none;color:var(--text3);font-size:20px;cursor:pointer;\">x</button></div>"
-    +"<div id=\"bcp-vo-status\" style=\"text-align:center;padding:20px;font-size:14px;color:var(--text3);margin-bottom:16px;background:var(--surface2);border-radius:12px;\">Ready to record your voice-over</div>"
-    +"<div id=\"bcp-vo-timer\" style=\"text-align:center;font-size:36px;font-weight:900;color:var(--text);margin-bottom:16px;display:none;\">0:00</div>"
-    +"<div style=\"display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;\">"
+    +"<div id=\"bcp-vo-status\" style=\"text-align:center;padding:14px;font-size:13px;color:var(--text3);margin-bottom:12px;background:var(--surface2);border-radius:12px;\">"+(vurl ? "Play the video and record your voice-over." : "Load a video first so you can record over it.")+"</div>"
+    +"<div style=\"margin-bottom:12px;\">"
+      + (vurl ? "<video id=\"bcp-vo-video\" src=\""+vurl+"\" muted playsinline style=\"width:100%;max-height:240px;border-radius:12px;background:#000;display:block;object-fit:contain;\"></video>"
+              : "<label style=\"display:block;padding:12px;background:var(--surface2);border:1px dashed var(--border);border-radius:12px;text-align:center;color:var(--text2);cursor:pointer;font-size:13px;\">"
+                + "Load Video (MP4) for Voice-Over"
+                + "<input type=\"file\" accept=\"video/*\" style=\"display:none\" onchange=\"bcpVOSelectVideo(event)\">"
+                + "</label>")
+    +"</div>"
+    +"<div id=\"bcp-vo-timer\" style=\"text-align:center;font-size:34px;font-weight:900;color:var(--text);margin-bottom:10px;display:none;\">0:00</div>"
+    +"<div style=\"display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;\">"
     +"<button id=\"bcp-vo-start\" onclick=\"bcpVOStart()\" style=\"padding:14px;background:linear-gradient(135deg,#ef4444,#dc2626);color:#fff;border:none;border-radius:10px;font-size:13px;font-weight:800;cursor:pointer;\">🔴 Record</button>"
     +"<button id=\"bcp-vo-stop\" onclick=\"bcpVOStop()\" style=\"padding:14px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;color:var(--text3);\" disabled>⏹ Stop</button></div>"
     +"<div id=\"bcp-vo-playback\" style=\"display:none;margin-bottom:12px;\">"
     +"<audio id=\"bcp-vo-audio\" controls style=\"width:100%;border-radius:8px;\"></audio></div>"
-    +"<div id=\"bcp-vo-actions\" style=\"display:none;display:flex;gap:8px;\">"
-    +"<button onclick=\"bcpVODownload()\" style=\"flex:1;padding:10px;background:linear-gradient(135deg,#059669,#047857);color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;\">⬇️ Save Audio</button>"
-    +"<button onclick=\"bcpVOUseInVideo()\" style=\"flex:1;padding:10px;background:linear-gradient(135deg,#7c3aed,#4f46e5);color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;\">🎬 Add to Video</button>"
-    +"</div>"
+    +"<div id=\"bcp-vo-actions\" style=\"display:none;display:flex;gap:10px;\">"
+    +"<button onclick=\"bcpVODownload()\" style=\"flex:1;padding:12px;background:linear-gradient(135deg,#059669,#047857);color:#fff;border:none;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;\">⬇️ Save Audio</button>"
+    +"<button onclick=\"bcpVOUseInVideo()\" style=\"flex:1;padding:12px;background:linear-gradient(135deg,#7c3aed,#4f46e5);color:#fff;border:none;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;\">🎬 Add to Video</button>"
     +"</div>";
+
   ov.addEventListener("click",function(e){if(e.target===ov)bcpVOClose();});
   document.body.appendChild(ov);
 }
 
+function bcpVOSelectVideo(evt){
+  var file = evt.target.files && evt.target.files[0];
+  if(!file){ return; }
+  // Use the same loader as Creative+ so canvas/video state is ready.
+  try{
+    ceLoadFile({target:{files:[file]}});
+    showToast("Video loaded for voice-over. Press Record when ready.");
+    setTimeout(function(){
+      if(_ceState && _ceState.videoUrl){
+        var v=document.getElementById('bcp-vo-video');
+        if(v){ v.src=_ceState.videoUrl; v.load(); }
+      }
+    }, 600);
+  }catch(e){
+    showToast("Could not load that video.");
+  }
+}
+
 function bcpVOStart(){
+  if(!_ceState || !_ceState.isVideo || !_ceState.image){
+    showToast("Load a video first so you can record over it.");
+    return;
+  }
+  var v=_ceState.image;
+  // Offset (seconds) from the start of the exported trim; used to place voice in export.
+  var vt0=_ceState.videoTrimStart||0;
+  window._bcpVoiceoverStartOffsetSec = Math.max(0,(v.currentTime||0)-vt0);
+  try{ v.muted=true; v.play(); }catch(e){}
+  // Keep the modal preview video in sync so users see what they're recording over.
+  try{
+    var pv=document.getElementById("bcp-vo-video");
+    if(pv){
+      pv.muted=true;
+      try{ pv.currentTime = v.currentTime||0; }catch(e){}
+      pv.play().catch(function(){});
+    }
+  }catch(e){}
+
   navigator.mediaDevices.getUserMedia({audio:true}).then(function(stream){
     window._bcpVOChunks=[];
     window._bcpVORecorder=new MediaRecorder(stream);
@@ -19699,6 +19796,10 @@ function bcpVOUseInVideo(){
   var audio=new Audio(url);audio.loop=false;audio.volume=0.8;
   if(window._bcpAudioEl)window._bcpAudioEl.pause();
   window._bcpAudioEl=audio;
+  window._bcpVoiceoverMode = true;
+  window._bcpMusicTrack = "voiceover";
+  window._bcpMusicIsYoutube = false;
+  window._bcpMusicSyncOffsetMs = 0;
   audio.play().catch(function(){});
   bcpVOClose();showToast("Voice-over added — will play with your video export!");
 }
@@ -20212,7 +20313,7 @@ function bcpShowFullEditor(){
     : "flex:1 1 58%;min-height:160px;display:flex;flex-direction:column;min-height:0;overflow:hidden;background:#050505;";
 
   var quickTools=[
-    "<div style=\"flex-shrink:0;display:flex;align-items:center;gap:6px;padding:8px 10px;border-bottom:1px solid #2a2a2a;background:#161616;overflow-x:auto;-webkit-overflow-scrolling:touch;\">",
+    "<div style=\"flex-shrink:0;display:flex;flex-direction:column;align-items:flex-end;gap:6px;padding:8px 8px;border-bottom:1px solid #2a2a2a;background:#161616;overflow-y:auto;max-height:220px;overflow-x:hidden;-webkit-overflow-scrolling:touch;\">",
     ceToolLabeled("select","🖱️","Select"),
     ceToolLabeled("text","T","Text"),
     ceToolLabeled("shape","⬛","Shape"),
@@ -20228,22 +20329,22 @@ function bcpShowFullEditor(){
   ].join("");
 
   var tabBar=[
-    "<div id=\"bcp-editor-tab-bar\" style=\"flex-shrink:0;display:flex;gap:4px;padding:6px 10px 8px;border-bottom:1px solid #2a2a2a;background:#121212;overflow-x:auto;\">",
-    "<button type=\"button\" id=\"bcp-tab-btn-edit\" onclick=\"bcpEditorTab(\'edit\')\" style=\"padding:8px 14px;border-radius:999px;font-size:11px;font-weight:700;cursor:pointer;border:1px solid #e8a838;background:#e8a838;color:#000;flex-shrink:0;\">Edit</button>",
-    "<button type=\"button\" id=\"bcp-tab-btn-sound\" onclick=\"bcpEditorTab(\'sound\')\" style=\"padding:8px 14px;border-radius:999px;font-size:11px;font-weight:700;cursor:pointer;border:1px solid #333;background:transparent;color:#aaa;flex-shrink:0;\">Sound</button>",
-    "<button type=\"button\" id=\"bcp-tab-btn-creative\" onclick=\"bcpEditorTab(\'creative\')\" style=\"padding:8px 14px;border-radius:999px;font-size:11px;font-weight:700;cursor:pointer;border:1px solid #333;background:transparent;color:#aaa;flex-shrink:0;\">Creative+</button>",
-    "<button type=\"button\" id=\"bcp-tab-btn-share\" onclick=\"bcpEditorTab(\'share\')\" style=\"padding:8px 14px;border-radius:999px;font-size:11px;font-weight:700;cursor:pointer;border:1px solid #333;background:transparent;color:#aaa;flex-shrink:0;\">Share</button>",
+    "<div id=\"bcp-editor-tab-bar\" style=\"flex-shrink:0;display:flex;flex-direction:column;gap:6px;padding:10px 10px 10px;border-bottom:1px solid #2a2a2a;background:#121212;overflow-y:auto;overflow-x:hidden;max-height:220px;\">",
+    "<button type=\"button\" id=\"bcp-tab-btn-edit\" onclick=\"bcpEditorTab(\'edit\')\" style=\"padding:10px 10px;border-radius:10px;font-size:11px;font-weight:700;cursor:pointer;border:1px solid #e8a838;background:#e8a838;color:#000;flex-shrink:0;width:100%;text-align:center;\">Edit</button>",
+    "<button type=\"button\" id=\"bcp-tab-btn-sound\" onclick=\"bcpEditorTab(\'sound\')\" style=\"padding:10px 10px;border-radius:10px;font-size:11px;font-weight:700;cursor:pointer;border:1px solid #333;background:transparent;color:#aaa;flex-shrink:0;width:100%;text-align:center;\">Sound</button>",
+    "<button type=\"button\" id=\"bcp-tab-btn-creative\" onclick=\"bcpEditorTab(\'creative\')\" style=\"padding:10px 10px;border-radius:10px;font-size:11px;font-weight:700;cursor:pointer;border:1px solid #333;background:transparent;color:#aaa;flex-shrink:0;width:100%;text-align:center;\">Creative+</button>",
+    "<button type=\"button\" id=\"bcp-tab-btn-share\" onclick=\"bcpEditorTab(\'share\')\" style=\"padding:10px 10px;border-radius:10px;font-size:11px;font-weight:700;cursor:pointer;border:1px solid #333;background:transparent;color:#aaa;flex-shrink:0;width:100%;text-align:center;\">Share</button>",
     "</div>"
   ].join("");
 
   var bottomBlock = cropOnly
     ? [
-      "<div id=\"bcp-bottom-tools\" style=\"flex:0 0 auto;padding:10px 14px 14px;border-top:1px solid #252525;background:#121212;\">",
+      "<div id=\"bcp-bottom-tools\" style=\"flex:0 0 auto;width:min(420px,38vw);min-width:240px;padding:10px 14px 14px;border-left:1px solid #252525;background:#121212;overflow:auto;\">",
       "<div style=\"font-size:10px;color:#888;text-align:center;line-height:1.45;max-width:520px;margin:0 auto;\">Pick a <strong style=\"color:#ccc;\">Format</strong>, adjust fit, and trim. Then continue for text, music, captions &amp; scheduling.</div>",
       "</div>"
     ].join("")
     : [
-      "<div id=\"bcp-bottom-tools\" style=\"flex:1 1 42%;min-height:120px;max-height:min(40vh,560px);display:flex;flex-direction:column;border-top:1px solid #252525;background:#121212;min-height:0;\">",
+      "<div id=\"bcp-bottom-tools\" style=\"flex:0 0 auto;width:min(420px,38vw);min-width:280px;display:flex;flex-direction:column;border-left:1px solid #252525;background:#121212;min-height:0;height:100%;\">",
         "<div id=\"bcp-tools-collapse-bar\" style=\"flex-shrink:0;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 10px;border-bottom:1px solid #2a2a2a;background:#161616;\">",
           "<span style=\"font-size:10px;font-weight:600;color:#888;letter-spacing:.04em;\">Studio tools <span style=\"color:#555;font-weight:500;\">— edit, sound, export</span></span>",
           "<button type=\"button\" id=\"bcp-tools-collapse-btn\" onclick=\"bcpToggleToolsCollapse()\" title=\"More space for your video\" style=\"padding:6px 12px;background:#222;border:1px solid #444;border-radius:8px;color:#e8a838;font-size:11px;font-weight:800;cursor:pointer;flex-shrink:0;\">▼ Hide tools</button>",
@@ -20261,11 +20362,13 @@ function bcpShowFullEditor(){
     ].join("");
 
   area.innerHTML = [
-    "<div id=\"bcp-editor-layout\" style=\"display:flex;flex-direction:column;height:100%;min-height:0;max-height:100%;overflow:hidden;background:#0a0a0a;border-radius:0;\">",
-      topBar,
-      "<div id=\"ce-preview-stack\" style=\""+stackStyle+"\">",
-        "<div id=\"ce-canvas-wrap\" style=\"flex:1 1 auto;min-height:min(200px,35vh);overflow:hidden;display:flex;align-items:center;justify-content:center;background:#050505;position:relative;\">",
-          "<canvas id=\"ce-canvas\" style=\"box-shadow:0 12px 48px rgba(0,0,0,.75);cursor:crosshair;max-width:100%;max-height:100%;object-fit:contain;\"></canvas>",
+    "<div id=\"bcp-editor-layout\" style=\"display:flex;flex-direction:row;height:100%;min-height:0;max-height:100%;overflow:hidden;background:#0a0a0a;border-radius:0;\">",
+      "<div style=\"flex:1;min-width:0;display:flex;flex-direction:column;\">",
+        topBar,
+        "<div id=\"ce-preview-stack\" style=\""+stackStyle+"\">",
+          "<div id=\"ce-canvas-wrap\" style=\"flex:1 1 auto;min-height:min(200px,35vh);overflow:hidden;display:flex;align-items:center;justify-content:center;background:#050505;position:relative;\">",
+            "<canvas id=\"ce-canvas\" style=\"box-shadow:0 12px 48px rgba(0,0,0,.75);cursor:crosshair;max-width:100%;max-height:100%;object-fit:contain;\"></canvas>",
+          "</div>",
         "</div>",
       "</div>",
       bottomBlock,
