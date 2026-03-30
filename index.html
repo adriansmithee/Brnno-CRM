@@ -203,17 +203,70 @@
   }
   /* Full editor (Creative+): preview dominates upper area; tools dock below */
   #bcp-editor-layout #ce-preview-stack{
-    flex: 1 1 44%;
+    flex: 1 1 58%;
     min-height: 0;
   }
   #bcp-editor-layout #ce-canvas-wrap{
-    max-height: min(50svh, 620px) !important;
+    max-height: min(56svh, 720px) !important;
     flex: 1 1 auto !important;
+  }
+  #ce-video-bar input[type="range"]{
+    accent-color: #e8a838;
+  }
+  /* Collapse bottom studio tools for a larger preview */
+  #bcp-editor-layout.bcp-tools-collapsed #bcp-bottom-tools-inner{
+    display: none !important;
+  }
+  #bcp-editor-layout.bcp-tools-collapsed #bcp-bottom-tools{
+    flex: 0 0 auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+  }
+  #bcp-editor-layout.bcp-tools-collapsed #ce-preview-stack{
+    flex: 1 1 auto !important;
+    min-height: min(62vh, 820px) !important;
+  }
+  #bcp-editor-layout.bcp-tools-collapsed #bcp-tools-collapse-bar{
+    border-bottom: none;
   }
   @media (max-width: 900px){
     #content-studio-page{
       height: calc(100dvh - 58px - 24px - 72px);
       max-height: calc(100dvh - 58px - 24px - 72px);
+    }
+  }
+  /* Unified Make Content: editor + compose + preview */
+  #cs-unified-root{
+    flex-wrap:nowrap;
+  }
+  @media (max-width:1200px){
+    #cs-unified-root{
+      flex-direction:column;
+      overflow-y:auto !important;
+      height:auto !important;
+      min-height:100% !important;
+      align-items:stretch !important;
+    }
+    #cs-unified-editor-col{
+      flex:1 1 auto !important;
+      min-height:min(52vh,480px) !important;
+      width:100% !important;
+      max-height:none !important;
+    }
+    #cs-unified-compose-col{
+      width:100% !important;
+      max-width:none !important;
+      min-width:0 !important;
+      border-left:none !important;
+      border-top:1px solid var(--border);
+      max-height:55vh;
+    }
+    #cs-unified-preview-wrap{
+      width:100% !important;
+      min-width:0 !important;
+      border-left:none !important;
+      border-top:1px solid var(--border);
+      max-height:45vh;
     }
   }
 
@@ -13850,7 +13903,7 @@ const CS_CONTENT_TYPES = ['Before/After','Client Spotlight','Team Feature','Tips
 const CS_STATUS = { draft:'Draft', scheduled:'Scheduled', published:'Published', needs_review:'Needs Review' };
 const CS_STATUS_COLORS = { draft:'var(--text3)', scheduled:'#f59e0b', published:'#22c55e', needs_review:'#3b82f6' };
 
-let _csView = 'creative'; // calendar | compose | analytics | campaigns
+let _csView = 'creative'; // calendar | analytics | campaigns (compose merged into creative)
 let _csMonth = new Date().getMonth();
 let _csYear = new Date().getFullYear();
 let _csEditPost = null; // post being edited
@@ -13864,14 +13917,13 @@ function renderContentStudio(){
     // Header
     + '<div style="padding:16px 24px 0;flex-shrink:0;">'
       + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">'
-        + '<div style="display:flex;gap:8px;">'
+        + '<div style="display:flex;gap:8px;flex-wrap:wrap;">'
           + csTabBtn('creative','✨ Make Content', _csView==='creative')
-          + csTabBtn('compose','✏️ Compose', _csView==='compose')
           + csTabBtn('campaigns','🎯 Campaigns', _csView==='campaigns')
           + csTabBtn('calendar','📅 Calendar', _csView==='calendar')
           + csTabBtn('analytics','📊 Analytics', _csView==='analytics')
         + '</div>'
-        + '<button onclick="csOpenCompose(null)" style="padding:8px 18px;background:var(--accent);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">+ New Post</button>'
+        + '<button onclick="csOpenCompose(null)" style="padding:8px 18px;background:var(--accent);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;" title="Caption, schedule & preview (same screen)">+ New Post</button>'
         + '<button onclick="typeof bcpOpenBrandKit===\'function\'&&bcpOpenBrandKit()" style="padding:8px 14px;background:linear-gradient(135deg,rgba(232,168,56,.15),rgba(232,168,56,.08));border:1px solid rgba(232,168,56,.4);border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;color:var(--gold2);">🎨 Brand Kit</button>'
       
       + '</div>'
@@ -13898,14 +13950,24 @@ function csSetView(v){
   if(page){ renderContentStudio(); }
 }
 
+function csGetCreativeMountEl(){
+  return document.getElementById('cs-unified-editor-col') || document.getElementById('cs-content-area');
+}
+function csScrollToUnifiedPreview(silent){
+  var el=document.getElementById('cs-unified-preview-wrap');
+  if(el){
+    el.scrollIntoView({behavior:'smooth',block:'nearest'});
+    try{ el.style.boxShadow='0 0 0 2px rgba(232,168,56,.5)'; setTimeout(function(){ el.style.boxShadow=''; },1400); }catch(e){}
+  }
+  if(!silent) showToast('Platform preview');
+}
 function csRenderView(){
   const area = document.getElementById('cs-content-area');
   if(!area) return;
   if(_csView==='calendar') area.innerHTML = csCalendarHTML();
-  else if(_csView==='compose') csOpenCompose(null);
   else if(_csView==='campaigns') area.innerHTML = csCampaignsHTML();
   else if(_csView==='analytics') area.innerHTML = csAnalyticsHTML();
-  else if(_csView==='creative') csOpenCreativeEditor();
+  else if(_csView==='creative') csRenderUnifiedCreate();
   else if(_csView==='publish') area.innerHTML = csPublishHTML();
 }
 
@@ -13977,52 +14039,11 @@ function csCalendarHTML(){
   return html;
 }
 
-// ── COMPOSE / EDIT POST ──
-function csOpenCompose(postOrId){
-  _csView = 'compose';
-  let post = null;
-  if(typeof postOrId==='string'){
-    post = csGetPosts().find(p=>p.id===postOrId)||null;
-  } else if(postOrId && typeof postOrId==='object'){
-    // Prefill with date
-    post = { _prefill: postOrId };
-  }
-  _csEditPost = post;
-
-  const area = document.getElementById('cs-content-area');
-  if(!area) return;
-
-  const p = post && !post._prefill ? post : {};
-  const prefill = post?._prefill || {};
-  const isNew = !p.id;
-  const campaigns = csGetCampaigns();
-  if(!isNew && p.videoData){
-    window._cePendingVideoUrl=p.videoData;
-    window._cePendingVideoData=p.videoData;
-    window._cePendingMediaType='video';
-    window._cePendingImage=null;
-  }else if(!isNew && p.imageData){
-    window._cePendingImage=p.imageData;
-    window._cePendingMediaType='image';
-    window._cePendingVideoUrl=null;
-    window._cePendingVideoData=null;
-  }
-
-  // Get before/after photos from leads for quick insert
-  const leadPhotos = [];
-  (leads||[]).forEach(l => {
-    if(l.photos && l.photos.length>0){
-      leadPhotos.push({name: l.name||l.businessName||'Lead', id:l.id, photos:l.photos});
-    }
-  });
-
-  area.innerHTML = '<div style="display:flex;height:100%;overflow:hidden;">'
-    // Left: compose form
-    + '<div style="flex:1;overflow-y:auto;padding:20px 24px;">'
-      + '<div style="max-width:680px;">'
-        + '<div style="font-size:18px;font-weight:800;color:var(--text);font-family:var(--font-head);margin-bottom:20px;">'+(isNew?'✏️ New Post':'✏️ Edit Post')+'</div>'
-
-        // Caption
+// ── COMPOSE / EDIT POST (merged into Make Content — see csRenderUnifiedCreate) ──
+function csBuildComposeColumnHTML(p, prefill, isNew, leadPhotos, campaigns){
+  return '<div style="padding:16px 18px 22px;height:100%;box-sizing:border-box;">'
+    + '<div id="cs-compose-inner-max" style="max-width:100%;">'
+        + '<div style="font-size:16px;font-weight:800;color:var(--text);font-family:var(--font-head);margin-bottom:16px;">'+(isNew?'✏️ New Post':'✏️ Edit Post')+'</div>'
         + '<div style="margin-bottom:16px;">'
           + '<label style="font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text2);display:block;margin-bottom:6px;">Caption</label>'
           + '<div style="position:relative;">'
@@ -14030,14 +14051,12 @@ function csOpenCompose(postOrId){
               + 'style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px;color:var(--text);font-size:13px;resize:vertical;outline:none;font-family:inherit;">'+( p.caption||'')+'</textarea>'
             + '<div id="cs-char-count" style="position:absolute;bottom:8px;right:10px;font-size:10px;color:var(--text3);"></div>'
           + '</div>'
-          + '<div style="display:flex;gap:8px;margin-top:8px;">'
+          + '<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;">'
             + '<button onclick="csAICaption()" style="padding:6px 14px;background:var(--accent);color:#fff;border:none;border-radius:7px;font-size:11px;font-weight:700;cursor:pointer;">🤖 AI Caption</button>'
             + '<button onclick="csAIHashtags()" style="padding:6px 14px;background:var(--surface2);color:var(--text2);border:1px solid var(--border);border-radius:7px;font-size:11px;cursor:pointer;">#️⃣ Hashtags</button>'
             + '<button onclick="csAIRepurpose()" style="padding:6px 14px;background:var(--surface2);color:var(--text2);border:1px solid var(--border);border-radius:7px;font-size:11px;cursor:pointer;">♻️ Repurpose</button>'
           + '</div>'
         + '</div>'
-
-        // Platforms
         + '<div style="margin-bottom:16px;">'
           + '<label style="font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text2);display:block;margin-bottom:8px;">Platforms</label>'
           + '<div style="display:flex;flex-wrap:wrap;gap:8px;">'
@@ -14050,8 +14069,6 @@ function csOpenCompose(postOrId){
             }).join('')
           + '</div>'
         + '</div>'
-
-        // Content type + Status + Schedule date
         + '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:16px;">'
           + '<div>'
             + '<label style="font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text2);display:block;margin-bottom:6px;">Content Type</label>'
@@ -14070,8 +14087,6 @@ function csOpenCompose(postOrId){
             + '<input type="datetime-local" id="cs-schedule-date" value="'+(p.scheduledDate||prefill.scheduledDate||'')+'" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 10px;color:var(--text);font-size:12px;outline:none;">'
           + '</div>'
         + '</div>'
-
-        // Campaign
         + '<div style="margin-bottom:16px;">'
           + '<label style="font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text2);display:block;margin-bottom:6px;">Campaign (optional)</label>'
           + '<select id="cs-campaign" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 10px;color:var(--text);font-size:12px;outline:none;">'
@@ -14079,14 +14094,10 @@ function csOpenCompose(postOrId){
           + campaigns.map(c=>'<option value="'+c.id+'" '+(p.campaignId===c.id?'selected':'')+'>'+c.name+'</option>').join('')
           + '</select>'
         + '</div>'
-
-        // Notes / internal
         + '<div style="margin-bottom:16px;">'
           + '<label style="font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text2);display:block;margin-bottom:6px;">Internal Notes</label>'
           + '<textarea id="cs-notes" rows="2" placeholder="Notes for the team..." style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text);font-size:12px;resize:vertical;outline:none;">'+( p.notes||'')+'</textarea>'
         + '</div>'
-
-        // UTM Link builder
         + '<div style="margin-bottom:20px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px;">'
           + '<div style="font-size:11px;font-weight:700;color:var(--text2);margin-bottom:10px;">🔗 UTM Tracking Link</div>'
           + '<div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;">'
@@ -14095,8 +14106,6 @@ function csOpenCompose(postOrId){
           + '</div>'
           + '<div id="cs-utm-result" style="font-size:11px;color:var(--accent);word-break:break-all;cursor:pointer;" onclick="navigator.clipboard.writeText(this.textContent);showToast(\'Copied!\');">'+(p.utmLink||'')+'</div>'
         + '</div>'
-
-        // Before/After quick insert
         + (leadPhotos.length>0 ? '<div style="margin-bottom:20px;">'
           + '<div style="font-size:11px;font-weight:700;color:var(--text2);margin-bottom:8px;">📎 Before/After from Leads</div>'
           + '<div style="display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;">'
@@ -14110,8 +14119,6 @@ function csOpenCompose(postOrId){
             ).join('')
           + '</div></div>'
         : '')
-
-        // Action buttons
         + '<div style="display:flex;gap:8px;margin-bottom:8px;">'
           + '<button onclick="csSavePost(\'draft\')" style="flex:1;padding:10px 4px;background:var(--surface2);color:var(--text2);border:1px solid var(--border);border-radius:8px;font-size:11px;cursor:pointer;">💾 Draft</button>'
           + '<button onclick="csSavePost(\'scheduled\')" style="flex:1;padding:10px 4px;background:var(--accent);color:#fff;border:none;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;">📅 Schedule</button>'
@@ -14119,20 +14126,62 @@ function csOpenCompose(postOrId){
         + '</div>'
         + '<button onclick="csDownloadPostPackage()" style="width:100%;padding:10px;background:rgba(212,160,23,.1);border:1px solid rgba(212,160,23,.3);border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;color:var(--gold2);margin-bottom:8px;">⬇️ Download Post (Media + Caption)</button>'
         + (p.id ? '<button onclick="csDeletePost(\''+p.id+'\')" style="width:100%;padding:8px;background:transparent;border:1px solid rgba(247,79,106,.3);border-radius:7px;color:#f74f6a;font-size:11px;cursor:pointer;">🗑 Delete Post</button>' : '')
-      + '</div>'
+    + '</div></div>';
+}
+function csRenderUnifiedCreate(){
+  const area = document.getElementById('cs-content-area');
+  if(!area) return;
+  const post = _csEditPost;
+  const p = post && !post._prefill ? post : {};
+  const prefill = post?._prefill || {};
+  const isNew = !p.id;
+  const campaigns = csGetCampaigns();
+  if(!isNew && p.videoData){
+    window._cePendingVideoUrl=p.videoData;
+    window._cePendingVideoData=p.videoData;
+    window._cePendingMediaType='video';
+    window._cePendingImage=null;
+  }else if(!isNew && p.imageData){
+    window._cePendingImage=p.imageData;
+    window._cePendingMediaType='image';
+    window._cePendingVideoUrl=null;
+    window._cePendingVideoData=null;
+  }
+  const leadPhotos = [];
+  (leads||[]).forEach(l => {
+    if(l.photos && l.photos.length>0){
+      leadPhotos.push({name: l.name||l.businessName||'Lead', id:l.id, photos:l.photos});
+    }
+  });
+  const composeHtml = csBuildComposeColumnHTML(p, prefill, isNew, leadPhotos, campaigns);
+  const previewInner = csPreviewHTML(p);
+  area.innerHTML = ''
+    + '<div id="cs-unified-root" style="display:flex;flex-direction:row;height:100%;min-height:0;overflow:hidden;align-items:stretch;">'
+    + '<div id="cs-unified-editor-col" style="flex:1;min-width:0;min-height:0;overflow:hidden;display:flex;flex-direction:column;"></div>'
+    + '<div id="cs-unified-compose-col" style="width:min(400px,38vw);min-width:280px;max-width:460px;flex-shrink:0;overflow-y:auto;border-left:1px solid var(--border);background:var(--bg);-webkit-overflow-scrolling:touch;">'
+    + composeHtml
     + '</div>'
-
-    // Right: preview panel
-    + '<div style="width:300px;flex-shrink:0;border-left:1px solid var(--border);overflow-y:auto;padding:20px;background:var(--surface);">'
-      + '<div style="font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text2);margin-bottom:14px;">Platform Preview</div>'
-      + '<div id="cs-preview-panel">'
-      + csPreviewHTML(p)
-      + '</div>'
+    + '<div id="cs-unified-preview-wrap" style="width:280px;min-width:260px;flex-shrink:0;border-left:1px solid var(--border);overflow-y:auto;background:var(--surface);padding:14px 16px 20px;-webkit-overflow-scrolling:touch;">'
+    + '<div style="font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--text2);margin-bottom:12px;">Platform Preview</div>'
+    + '<div id="cs-preview-panel">'+previewInner+'</div>'
     + '</div>'
-  + '</div>';
-
-  csUpdateCharCount();
-  if(window._cePendingVideoUrl||window._cePendingImage) setTimeout(function(){ if(typeof csInsertComposeMediaPreview==='function') csInsertComposeMediaPreview(); }, 0);
+    + '</div>';
+  csOpenCreativeEditor();
+  setTimeout(function(){
+    csUpdateCharCount();
+    if(window._cePendingVideoUrl||window._cePendingImage) csInsertComposeMediaPreview();
+  }, 0);
+}
+function csOpenCompose(postOrId){
+  let post = null;
+  if(typeof postOrId==='string'){
+    post = csGetPosts().find(p=>p.id===postOrId)||null;
+  } else if(postOrId && typeof postOrId==='object'){
+    post = { _prefill: postOrId };
+  }
+  _csEditPost = post;
+  _csView = 'creative';
+  renderContentStudio();
 }
 
 function csPreviewHTML(p){
@@ -15072,31 +15121,49 @@ function ceLoadVideo(file){
 function ceVideoBarHTML(dur){
   var td=dur.toFixed(2);
   var fT=function(n){var m=Math.floor(n/60);return m+':'+String(Math.floor(n%60)).padStart(2,'0');};
-  var rows=['<div id="ce-video-bar" style="flex-shrink:0;background:#0d0d0d;border-top:1px solid #1e1e1e;padding:12px 16px;display:flex;flex-direction:column;gap:10px;">'];
-  rows.push('<div style="display:flex;align-items:center;gap:10px;">');
-  rows.push('<span id="ce-bcur" style="font-size:11px;color:#888;font-family:monospace;min-width:40px;text-align:right;">0:00</span>');
-  rows.push('<div style="flex:1;position:relative;height:28px;display:flex;align-items:center;">');
-  rows.push('<div style="position:absolute;inset:0;top:50%;transform:translateY(-50%);height:4px;background:#2a2a2a;border-radius:2px;pointer-events:none;"></div>');
-  rows.push('<div id="ce-bfill" style="position:absolute;left:0;top:50%;transform:translateY(-50%);height:4px;background:#e8a838;border-radius:2px;width:0%;pointer-events:none;"></div>');
-  rows.push('<div id="ce-bthumb" style="position:absolute;left:0%;top:50%;transform:translate(-50%,-50%);width:14px;height:14px;background:#e8a838;border-radius:50%;box-shadow:0 0 0 3px rgba(232,168,56,.25);pointer-events:none;"></div>');
+  var s0=(_ceState.videoTrimStart||0).toFixed(2);
+  var s1=(_ceState.videoTrimEnd||dur).toFixed(2);
+  var rows=['<div id="ce-video-bar" style="flex-shrink:0;background:#0a0a0a;border-top:1px solid #1a1a1a;padding:6px 8px 7px;display:flex;flex-direction:column;gap:5px;">'];
+  rows.push('<div style="display:flex;align-items:center;gap:6px;">');
+  rows.push('<span id="ce-bcur" style="font-size:10px;color:#888;font-family:monospace;min-width:36px;text-align:right;">0:00</span>');
+  rows.push('<div style="flex:1;position:relative;height:22px;display:flex;align-items:center;">');
+  rows.push('<div style="position:absolute;inset:0;top:50%;transform:translateY(-50%);height:3px;background:#222;border-radius:2px;pointer-events:none;"></div>');
+  rows.push('<div id="ce-bfill" style="position:absolute;left:0;top:50%;transform:translateY(-50%);height:3px;background:#e8a838;border-radius:2px;width:0%;pointer-events:none;"></div>');
+  rows.push('<div id="ce-bthumb" style="position:absolute;left:0%;top:50%;transform:translate(-50%,-50%);width:11px;height:11px;background:#e8a838;border-radius:50%;box-shadow:0 0 0 2px rgba(232,168,56,.3);pointer-events:none;"></div>');
   rows.push('<input type="range" id="ce-bscrub" min="0" max="'+td+'" step="0.05" value="0" style="position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer;margin:0;" oninput="ceBarScrub(parseFloat(this.value),'+td+')">');
   rows.push('</div>');
-  rows.push('<span style="font-size:11px;color:#444;font-family:monospace;min-width:40px;">'+fT(dur)+'</span>');
+  rows.push('<span style="font-size:10px;color:#555;font-family:monospace;min-width:36px;">'+fT(dur)+'</span>');
   rows.push('</div>');
-  rows.push('<div style="display:flex;align-items:center;gap:8px;">');
-  rows.push('<button onclick="ceBarFrame(-1)" style="width:32px;height:32px;display:flex;align-items:center;justify-content:center;background:#1a1a1a;border:1px solid #2a2a2a;border-radius:8px;color:#ccc;font-size:14px;cursor:pointer;flex-shrink:0;">&#8249;</button>');
-  rows.push('<button id="ce-bplay" onclick="ceBarPlayPause()" style="width:40px;height:40px;display:flex;align-items:center;justify-content:center;background:#e8a838;border:none;border-radius:50%;color:#000;font-size:16px;font-weight:900;cursor:pointer;flex-shrink:0;box-shadow:0 2px 12px rgba(232,168,56,.35);">&#9654;</button>');
-  rows.push('<button onclick="ceBarFrame(1)" style="width:32px;height:32px;display:flex;align-items:center;justify-content:center;background:#1a1a1a;border:1px solid #2a2a2a;border-radius:8px;color:#ccc;font-size:14px;cursor:pointer;flex-shrink:0;">&#8250;</button>');
-  rows.push('<div style="flex:1;"></div>');
-  rows.push('<select onchange="ceBarSpeed(parseFloat(this.value))" style="background:#1a1a1a;border:1px solid #2a2a2a;border-radius:8px;color:#aaa;font-size:11px;padding:5px 8px;cursor:pointer;">');
-  rows.push('<option value="0.25">0.25x</option><option value="0.5">0.5x</option><option value="1" selected>1x</option><option value="1.5">1.5x</option><option value="2">2x</option><option value="3">3x</option>');
+  rows.push('<div style="display:flex;align-items:center;gap:2px;flex-wrap:wrap;">');
+  rows.push('<span style="font-size:8px;color:#555;text-transform:uppercase;letter-spacing:.04em;width:100%;margin-bottom:1px;">Trim clip</span>');
+  rows.push('<div style="flex:1;min-width:120px;display:flex;align-items:center;gap:4px;"><span style="font-size:9px;color:#666;width:14px;">In</span><input type="range" id="ce-ts" min="0" max="'+td+'" step="0.1" value="'+s0+'" style="flex:1;height:3px;min-height:0;accent-color:#3b82f6;" oninput="ceSetTrimStart(this.value)"><span style="font-size:9px;color:#93c5fd;min-width:28px;font-family:monospace;" id="ce-tsv">'+fT(_ceState.videoTrimStart||0)+'</span></div>');
+  rows.push('<div style="flex:1;min-width:120px;display:flex;align-items:center;gap:4px;"><span style="font-size:9px;color:#666;width:14px;">Out</span><input type="range" id="ce-te" min="0" max="'+td+'" step="0.1" value="'+s1+'" style="flex:1;height:3px;min-height:0;accent-color:#fb923c;" oninput="ceSetTrimEnd(this.value)"><span style="font-size:9px;color:#fdba74;min-width:28px;font-family:monospace;" id="ce-tev">'+fT(_ceState.videoTrimEnd||dur)+'</span></div>');
+  rows.push('</div>');
+  rows.push('<div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;">');
+  rows.push('<button onclick="ceBarFrame(-1)" style="width:26px;height:26px;display:flex;align-items:center;justify-content:center;background:#141414;border:1px solid #252525;border-radius:6px;color:#bbb;font-size:11px;cursor:pointer;flex-shrink:0;padding:0;">&#8249;</button>');
+  rows.push('<button id="ce-bplay" onclick="ceBarPlayPause()" style="width:32px;height:32px;display:flex;align-items:center;justify-content:center;background:#e8a838;border:none;border-radius:50%;color:#000;font-size:13px;font-weight:900;cursor:pointer;flex-shrink:0;box-shadow:0 1px 8px rgba(232,168,56,.25);padding:0;">&#9654;</button>');
+  rows.push('<button onclick="ceBarFrame(1)" style="width:26px;height:26px;display:flex;align-items:center;justify-content:center;background:#141414;border:1px solid #252525;border-radius:6px;color:#bbb;font-size:11px;cursor:pointer;flex-shrink:0;padding:0;">&#8250;</button>');
+  rows.push('<select onchange="ceBarSpeed(parseFloat(this.value))" style="background:#141414;border:1px solid #252525;border-radius:6px;color:#999;font-size:10px;padding:3px 5px;cursor:pointer;height:26px;">');
+  rows.push('<option value="0.25">.25</option><option value="0.5">.5</option><option value="1" selected>1×</option><option value="1.5">1.5</option><option value="2">2×</option><option value="3">3×</option>');
   rows.push('</select>');
-  rows.push('<button id="ce-bmute" onclick="ceBarMute()" style="height:32px;padding:0 12px;background:#1a1a1a;border:1px solid #2a2a2a;border-radius:8px;color:#aaa;font-size:11px;cursor:pointer;flex-shrink:0;">Mute</button>');
-  rows.push('<div style="width:1px;height:24px;background:#2a2a2a;flex-shrink:0;"></div>');
-  rows.push('<button onclick="ceBarTrimIn()" style="height:32px;padding:0 12px;background:rgba(232,168,56,.1);border:1px solid rgba(232,168,56,.4);border-radius:8px;color:#e8a838;font-size:11px;font-weight:700;cursor:pointer;flex-shrink:0;">Cut In</button>');
-  rows.push('<button onclick="ceBarTrimOut()" style="height:32px;padding:0 12px;background:rgba(249,115,22,.1);border:1px solid rgba(249,115,22,.4);border-radius:8px;color:#f97316;font-size:11px;font-weight:700;cursor:pointer;flex-shrink:0;">Cut Out</button>');
-  rows.push('<button onclick="ceExportVideo&&ceExportVideo()" style="height:32px;padding:0 16px;background:linear-gradient(135deg,#7c3aed,#4f46e5);border:none;border-radius:8px;color:#fff;font-size:11px;font-weight:700;cursor:pointer;flex-shrink:0;box-shadow:0 2px 10px rgba(124,58,237,.3);">Export</button>');
+  rows.push('<button id="ce-mb" onclick="ceToggleMute()" style="height:26px;padding:0 8px;background:#141414;border:1px solid #252525;border-radius:6px;color:#aaa;font-size:10px;cursor:pointer;flex-shrink:0;">Mute</button>');
+  rows.push('<button onclick="ceBarTrimIn()" style="height:26px;padding:0 7px;background:rgba(232,168,56,.08);border:1px solid rgba(232,168,56,.35);border-radius:6px;color:#e8a838;font-size:9px;font-weight:700;cursor:pointer;">In</button>');
+  rows.push('<button onclick="ceBarTrimOut()" style="height:26px;padding:0 7px;background:rgba(249,115,22,.08);border:1px solid rgba(249,115,22,.35);border-radius:6px;color:#fb923c;font-size:9px;font-weight:700;cursor:pointer;">Out</button>');
+  rows.push('<button onclick="ceVideoCapture()" style="height:26px;padding:0 7px;background:#141414;border:1px solid #252525;border-radius:6px;color:#aaa;font-size:9px;cursor:pointer;">Cap</button>');
+  rows.push('<button onclick="ceExportVideo&&ceExportVideo()" style="height:26px;padding:0 9px;background:linear-gradient(135deg,#6d28d9,#4f46e5);border:none;border-radius:6px;color:#fff;font-size:9px;font-weight:800;cursor:pointer;flex-shrink:0;">Export</button>');
+  rows.push('</div>');
+  rows.push('<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding-top:3px;margin-top:2px;border-top:1px solid #141414;">');
+  rows.push('<button type="button" onclick="bcpEditorTab(\'sound\')" style="padding:3px 8px;background:#141414;border:1px solid rgba(232,168,56,.35);border-radius:6px;color:#e8a838;font-size:9px;font-weight:800;cursor:pointer;flex-shrink:0;">🎵 Sounds</button>');
+  rows.push('<span id="ce-bar-music-label" style="font-size:9px;color:#666;flex:1;min-width:100px;">No music · tap Sounds</span>');
+  rows.push('<div id="ce-bar-music-trim" style="display:none;align-items:center;gap:4px;flex-wrap:wrap;">');
+  rows.push('<span style="font-size:8px;color:#555;">Clip</span>');
+  rows.push('<input type="number" id="ce-music-tstart-mini" step="0.1" min="0" title="Music start s" style="width:48px;padding:2px 4px;font-size:9px;border-radius:4px;border:1px solid #2a2a2a;background:#0d0d0d;color:#ccc;" onchange="ceMusicTrimFromBar()">');
+  rows.push('<span style="font-size:8px;color:#444;">→</span>');
+  rows.push('<input type="number" id="ce-music-tend-mini" step="0.1" min="0" title="Music end s" style="width:48px;padding:2px 4px;font-size:9px;border-radius:4px;border:1px solid #2a2a2a;background:#0d0d0d;color:#ccc;" onchange="ceMusicTrimFromBar()">');
   rows.push('</div></div>');
+  rows.push('<div style="display:flex;gap:4px;align-items:center;"><input id="ce-vurl" placeholder="Load .mp4 URL…" style="flex:1;min-width:0;background:#111;border:1px solid #222;border-radius:5px;padding:4px 6px;color:#bbb;font-size:9px;outline:none;">');
+  rows.push('<button onclick="ceLoadVideoUrl()" style="padding:4px 8px;background:#1e3a5f;border:1px solid #2d4a6f;border-radius:5px;color:#fff;font-size:9px;font-weight:700;cursor:pointer;flex-shrink:0;">Go</button></div>');
+  rows.push('</div>');
   return rows.join('');
 }
 function ceBarScrub(val,dur){if(_ceState.image)_ceState.image.currentTime=val;var p=dur>0?val/dur*100:0;var f=document.getElementById('ce-bfill');if(f)f.style.width=p+'%';var th=document.getElementById('ce-bthumb');if(th)th.style.left=p+'%';var c=document.getElementById('ce-bcur');if(c){var m=Math.floor(val/60);c.textContent=m+':'+String(Math.floor(val%60)).padStart(2,'0');}}
@@ -15105,8 +15172,14 @@ function ceBarFrame(d){var v=_ceState.image;if(v){v.currentTime=Math.max(0,Math.
 function ceBarPlayPause(){var v=_ceState.image;if(!v)return;if(v.paused){ceVideoPlay&&ceVideoPlay();}else{ceVideoPause&&ceVideoPause();}}
 function ceBarSpeed(r){var v=_ceState.image;if(v)v.playbackRate=r;}
 function ceBarMute(){var v=_ceState.image;if(v){v.muted=!v.muted;var b=document.getElementById('ce-bmute');if(b)b.textContent=v.muted?'Unmute':'Mute';}}
-function ceBarTrimIn(){var v=_ceState.image;if(v){_ceState.videoTrimStart=v.currentTime;showToast('Cut In: '+v.currentTime.toFixed(1)+'s');}}
-function ceBarTrimOut(){var v=_ceState.image;if(v){_ceState.videoTrimEnd=v.currentTime;showToast('Cut Out: '+v.currentTime.toFixed(1)+'s');}}
+function ceSyncTrimSlidersFromState(){
+  var fT=function(s){const m=Math.floor(s/60);return m+':'+String(Math.floor(s%60)).padStart(2,'0');};
+  var ts=document.getElementById('ce-ts'), te=document.getElementById('ce-te');
+  if(ts&&_ceState.videoTrimStart!=null){ ts.value=_ceState.videoTrimStart; var a=document.getElementById('ce-tsv'); if(a) a.textContent=fT(_ceState.videoTrimStart); }
+  if(te&&_ceState.videoTrimEnd!=null){ te.value=_ceState.videoTrimEnd; var b=document.getElementById('ce-tev'); if(b) b.textContent=fT(_ceState.videoTrimEnd); }
+}
+function ceBarTrimIn(){var v=_ceState.image;if(v){_ceState.videoTrimStart=v.currentTime;showToast('Cut In: '+v.currentTime.toFixed(1)+'s');ceSyncTrimSlidersFromState();}}
+function ceBarTrimOut(){var v=_ceState.image;if(v){_ceState.videoTrimEnd=v.currentTime;showToast('Cut Out: '+v.currentTime.toFixed(1)+'s');ceSyncTrimSlidersFromState();}}
 
 function ceShowVideoPanel(){
   var exB=document.getElementById('ce-video-bar');if(exB)exB.remove();
@@ -15118,6 +15191,8 @@ function ceShowVideoPanel(){
     tmp.innerHTML=ceVideoBarHTML(totalDur);
     var bar=tmp.firstChild;
     wrap.parentElement.insertBefore(bar,wrap.nextSibling);
+    try{ var mb=document.getElementById('ce-mb'); if(mb&&_ceState) mb.textContent=_ceState.videoMuted?'Unmute':'Mute'; }catch(e){}
+    if(typeof ceUpdateVideoBarMusicUI==='function') ceUpdateVideoBarMusicUI();
     window._ceBarInterval=setInterval(function(){
       var v=_ceState.image;if(!v||!_ceState.isVideo)return;
       var sc=document.getElementById('ce-bscrub'),fl=document.getElementById('ce-bfill'),cu=document.getElementById('ce-bcur'),pb=document.getElementById('ce-bplay');
@@ -15133,39 +15208,6 @@ function ceShowVideoPanel(){
       if(_ceState.videoTrimEnd&&v.currentTime>=_ceState.videoTrimEnd){v.pause();if(window._bcpAudioEl)try{window._bcpAudioEl.pause();}catch(e){}}
     },100);
   }
-  const ex = document.getElementById('ce-video-panel'); if(ex) ex.remove();
-  const rp = document.querySelector('#cs-content-area > div > div:last-child'); if(!rp) return;
-  const v = _ceState.image; if(!v||!_ceState.isVideo) return;
-  const dur = _ceState.videoDuration||v.duration||0;
-  const fT = function(s){ const m=Math.floor(s/60); return m+':'+String(Math.floor(s%60)).padStart(2,'0'); };
-  const p = document.createElement('div');
-  p.id = 'ce-video-panel';
-  p.style.cssText = 'padding:12px;border-bottom:1px solid var(--border);';
-  const s0 = (_ceState.videoTrimStart||0).toFixed(2);
-  const s1 = (_ceState.videoTrimEnd||dur).toFixed(2);
-  const d2 = dur.toFixed(2);
-  p.innerHTML = [
-    '<div style="font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);margin-bottom:10px;">Video Controls</div>',
-    '<div style="display:flex;gap:6px;margin-bottom:10px;">',
-    '<button onclick="ceVideoPause()" style="flex:1;padding:7px 4px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;font-size:11px;cursor:pointer;color:var(--text2);">Pause</button>',
-    '<button onclick="ceVideoPlay()" style="flex:1;padding:7px 4px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;font-size:11px;cursor:pointer;color:var(--text2);">Play</button>',
-    '</div>',
-    '<div style="margin-bottom:8px;"><div style="display:flex;justify-content:space-between;margin-bottom:3px;"><span style="font-size:10px;color:var(--text3);">Trim Start</span><span style="font-size:10px;color:var(--text2);" id="ce-tsv">'+fT(_ceState.videoTrimStart||0)+'</span></div>',
-    '<input type="range" id="ce-ts" min="0" max="'+d2+'" step="0.1" value="'+s0+'" style="width:100%;accent-color:var(--accent);" oninput="ceSetTrimStart(this.value)"></div>',
-    '<div style="margin-bottom:10px;"><div style="display:flex;justify-content:space-between;margin-bottom:3px;"><span style="font-size:10px;color:var(--text3);">Trim End</span><span style="font-size:10px;color:var(--text2);" id="ce-tev">'+fT(_ceState.videoTrimEnd||dur)+'</span></div>',
-    '<input type="range" id="ce-te" min="0" max="'+d2+'" step="0.1" value="'+s1+'" style="width:100%;accent-color:#f97316;" oninput="ceSetTrimEnd(this.value)"></div>',
-    '<div style="margin-bottom:10px;"><div style="display:flex;justify-content:space-between;margin-bottom:3px;"><span style="font-size:10px;color:var(--text3);">Scrub</span><span style="font-size:10px;color:var(--text2);" id="ce-scv">0:00</span></div>',
-    '<input type="range" id="ce-sc" min="0" max="'+d2+'" step="0.05" value="0" style="width:100%;accent-color:#22c55e;" oninput="ceScrubVideo(this.value)"></div>',
-    '<div style="display:flex;gap:6px;margin-bottom:10px;">',
-    '<button onclick="ceToggleMute()" id="ce-mb" style="flex:1;padding:7px 4px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;font-size:11px;cursor:pointer;color:var(--text2);">Muted</button>',
-    '<button onclick="ceVideoCapture()" style="flex:1;padding:7px 4px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;font-size:11px;cursor:pointer;color:var(--text2);">Capture Frame</button>',
-    '</div>',
-    '<button onclick="ceExportVideo()" style="width:100%;padding:9px;background:linear-gradient(135deg,#7c3aed,#4f46e5);color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;margin-bottom:8px;">Export Video</button>',
-    '<div style="font-size:10px;color:var(--text3);margin-bottom:5px;">Load from URL (.mp4)</div>',
-    '<div style="display:flex;gap:4px;"><input id="ce-vurl" placeholder="Paste mp4 URL..." style="flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:7px;padding:6px 8px;color:var(--text);font-size:11px;outline:none;">',
-    '<button onclick="ceLoadVideoUrl()" style="padding:6px 10px;background:var(--accent);color:#fff;border:none;border-radius:7px;font-size:11px;cursor:pointer;font-weight:700;">Go</button></div>'
-  ].join('');
-  rp.insertBefore(p, rp.firstChild);
 }
 
 function ceVideoPlay(){
@@ -15179,15 +15221,8 @@ function ceVideoPlay(){
       window._bcpAudioEl.play();
     }catch(e){}
   }
-  const fT=function(s){const m=Math.floor(s/60);return m+':'+String(Math.floor(s%60)).padStart(2,'0');};
-  _ceState._tw=setInterval(function(){
-    if(!_ceState.image||!_ceState.isVideo){clearInterval(_ceState._tw);return;}
-    const sc=document.getElementById('ce-sc'),sv=document.getElementById('ce-scv');
-    if(sc) sc.value=_ceState.image.currentTime; if(sv) sv.textContent=fT(_ceState.image.currentTime);
-    if(_ceState.image.currentTime>=(_ceState.videoTrimEnd||_ceState.image.duration)){_ceState.image.pause();clearInterval(_ceState._tw);}
-  },100);
 }
-function ceVideoPause(){ const v=_ceState.image; if(v&&_ceState.isVideo)v.pause(); if(_ceState._tw)clearInterval(_ceState._tw); if(window._bcpAudioEl)try{window._bcpAudioEl.pause();}catch(e){} }
+function ceVideoPause(){ const v=_ceState.image; if(v&&_ceState.isVideo)v.pause(); if(window._bcpAudioEl)try{window._bcpAudioEl.pause();}catch(e){} }
 function ceSetTrimStart(val){
   val=parseFloat(val); _ceState.videoTrimStart=val;
   const fT=function(s){const m=Math.floor(s/60);return m+':'+String(Math.floor(s%60)).padStart(2,'0');};
@@ -15211,7 +15246,7 @@ function ceScrubVideo(val){
 function ceToggleMute(){
   _ceState.videoMuted=!_ceState.videoMuted;
   const v=_ceState.image; if(v&&_ceState.isVideo)v.muted=_ceState.videoMuted;
-  const btn=document.getElementById('ce-mb'); if(btn)btn.textContent=_ceState.videoMuted?'Muted':'Audio On';
+  const btn=document.getElementById('ce-mb'); if(btn)btn.textContent=_ceState.videoMuted?'Unmute':'Mute';
 }
 function ceVideoCapture(){
   const canvas=document.getElementById('ce-canvas'); if(!canvas)return;
@@ -16053,9 +16088,9 @@ function ceUseInPost(){
   window._cePendingVideoData=null;
   window._cePendingMediaType=null;
   function goCompose(){
-    _csView='compose';
-    csOpenCompose(null);
-    setTimeout(function(){ csInsertComposeMediaPreview&&csInsertComposeMediaPreview(); }, 80);
+    _csView='creative';
+    csRenderView();
+    setTimeout(function(){ csInsertComposeMediaPreview&&csInsertComposeMediaPreview(); if(csScrollToUnifiedPreview) csScrollToUnifiedPreview(true); }, 100);
   }
   if(_ceState&&_ceState.isVideo&&_ceState.image){
     var src=_ceState.videoUrl;
@@ -16088,9 +16123,12 @@ function ceUseInPost(){
 }
 
 function csInsertComposeMediaPreview(){
-  var area=document.getElementById('cs-content-area');
-  if(!area) return;
-  var box=area.querySelector('div[style*="max-width:680px"]');
+  var box=document.getElementById('cs-compose-inner-max');
+  if(!box){
+    var area=document.getElementById('cs-content-area');
+    if(!area) return;
+    box=area.querySelector('div[style*="max-width:680px"]');
+  }
   if(!box) return;
   var old=document.getElementById('cs-compose-media-preview');
   if(old) old.remove();
@@ -16261,7 +16299,7 @@ function csPublishHTML(){
           + scheduled.slice(0,3).map(p=>(p.caption||'Untitled').substring(0,40)+'…').join(' · ')
         + '</div>'
       + '</div>'
-      + '<button onclick="csSetView(\'compose\')" style="padding:7px 14px;background:var(--accent);color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;">View Posts</button>'
+      + '<button onclick="csSetView(\'creative\')" style="padding:7px 14px;background:var(--accent);color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;">View Posts</button>'
     + '</div>';
   }
 
@@ -18814,6 +18852,7 @@ function bcpSelectMusic(id,label){
     var ytc=document.getElementById("bcp-yt-trim-controls");if(ytc) ytc.style.display="none";
     var yth=document.getElementById("bcp-yt-preview-host");if(yth){yth.style.display="none";yth.innerHTML="";}
     showToast("Music removed");
+    ceUpdateVideoBarMusicUI();
     return;
   }
   if(BCP_PRESET_MUSIC[id]){
@@ -18863,22 +18902,66 @@ function bcpUpdateYoutubeEmbed(){
   host.innerHTML="<div style=\"font-size:9px;color:var(--text3);margin-bottom:6px;line-height:1.35;\">Preview plays only the selected range. To mix music into your exported video file, upload an MP3/WAV below (YouTube audio cannot be extracted in the browser).</div>"
     +"<iframe width=\"100%\" height=\"120\" style=\"border:0;border-radius:8px;\" src=\"https://www.youtube.com/embed/"+id+"?rel=0&start="+Math.floor(s)+"&end="+Math.floor(e)+"\" allow=\"accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture\" allowfullscreen></iframe>";
 }
+function ceSyncMusicTrimMiniFromState(){
+  var m0=document.getElementById("ce-music-tstart-mini"), m1=document.getElementById("ce-music-tend-mini");
+  if(m0&&document.activeElement!==m0) m0.value=(window._bcpMusicTrimStart||0).toFixed(1);
+  if(m1&&document.activeElement!==m1) m1.value=(window._bcpMusicTrimEnd||0).toFixed(1);
+}
 function bcpSetMusicTrim(){
   window._bcpMusicTrimStart=parseFloat(document.getElementById("bcp-music-tstart")?.value)||0;
   window._bcpMusicTrimEnd=parseFloat(document.getElementById("bcp-music-tend")?.value)||0;
+  ceSyncMusicTrimMiniFromState();
+}
+function ceMusicTrimFromBar(){
+  var m0=document.getElementById("ce-music-tstart-mini"), m1=document.getElementById("ce-music-tend-mini");
+  var bt=document.getElementById("bcp-music-tstart"), be=document.getElementById("bcp-music-tend");
+  if(bt&&m0) bt.value=m0.value;
+  if(be&&m1) be.value=m1.value;
+  window._bcpMusicTrimStart=parseFloat(m0?.value)||0;
+  window._bcpMusicTrimEnd=parseFloat(m1?.value)||0;
+}
+function ceUpdateVideoBarMusicUI(){
+  var lab=document.getElementById("ce-bar-music-label");
+  var trim=document.getElementById("ce-bar-music-trim");
+  var el=window._bcpAudioEl;
+  if(!lab) return;
+  if(trim) trim.style.display="none";
+  if(el&&el.src&&!window._bcpMusicIsYoutube){
+    var name=window._bcpMusicTrack==="upload"?"Uploaded":(window._bcpMusicTrack==="url"?"From URL":(window._bcpMusicTrack||"Track"));
+    if(window._bcpMusicTrack==="hype1") name="Hype Beats";
+    else if(window._bcpMusicTrack==="chill1") name="Chill Vibes";
+    else if(window._bcpMusicTrack==="epic1") name="Epic Rise";
+    lab.textContent="♪ "+name;
+    if(trim){
+      trim.style.display="flex";
+      var t0=document.getElementById("ce-music-tstart-mini"), t1=document.getElementById("ce-music-tend-mini");
+      var d=el.duration||0;
+      if(t0){ t0.value=(window._bcpMusicTrimStart||0).toFixed(1); if(isFinite(d)&&d>0){ t0.max=d; } }
+      if(t1){ t1.value=(window._bcpMusicTrimEnd||(Math.min(30,d)||30)).toFixed(1); if(isFinite(d)&&d>0){ t1.max=d; } }
+    }
+  }else if(window._bcpMusicIsYoutube){
+    lab.textContent="YT preview — add MP3 to mix in export";
+  }else{
+    lab.textContent="No music · tap Sounds";
+  }
 }
 function bcpInitMusicTrimUI(){
   var row=document.getElementById("bcp-music-trim-row");
   var el=window._bcpAudioEl;
-  if(!row)return;
-  if(!el||!el.src||window._bcpMusicIsYoutube){row.style.display="none";return;}
+  if(!row){
+    ceUpdateVideoBarMusicUI();
+    return;
+  }
+  if(!el||!el.src||window._bcpMusicIsYoutube){ row.style.display="none"; ceUpdateVideoBarMusicUI(); return; }
   row.style.display="block";
   function apply(){
     var d=el.duration||0;
-    if(!isFinite(d)||d<=0)return;
+    if(!isFinite(d)||d<=0){ ceUpdateVideoBarMusicUI(); return; }
     var s=document.getElementById("bcp-music-tstart"), e=document.getElementById("bcp-music-tend");
     if(s){ s.max=d; if(!s.value||parseFloat(s.value)<0) s.value=0; window._bcpMusicTrimStart=parseFloat(s.value)||0; }
     if(e){ e.max=d; if(!e.value||parseFloat(e.value)>d) e.value=Math.min(60,d).toFixed(1); window._bcpMusicTrimEnd=parseFloat(e.value)||d; }
+    ceSyncMusicTrimMiniFromState();
+    ceUpdateVideoBarMusicUI();
   }
   if(el.readyState>=1) apply();
   else el.addEventListener("loadedmetadata", apply, {once:true});
@@ -18903,6 +18986,7 @@ function bcpApplyAudioUrl(){
     var mrow=document.getElementById("bcp-music-trim-row");
     if(mrow) mrow.style.display="none";
     bcpUpdateYoutubeEmbed();
+    ceUpdateVideoBarMusicUI();
     showToast("YouTube preview ready — set start/end, then add MP3/WAV for export mix");
     return;
   }
@@ -19692,7 +19776,7 @@ window.ceOpenTemplates=bcpOpenTemplates;
 // ── BRNNO CREATIVE+ LANDING SCREEN ─────────────────────
 // Replaces the black canvas with a beautiful guided entry screen
 function csOpenCreativeEditor(opts){
-  const area = document.getElementById("cs-content-area");
+  const area = csGetCreativeMountEl();
   if(!area) return;
   _csView = "creative";
 
@@ -19769,11 +19853,34 @@ function bcpEditorTab(which){
   var el=id?document.getElementById(id):null;
   if(el)el.scrollIntoView({behavior:"smooth",block:"start"});
 }
+function bcpToggleToolsCollapse(){
+  var root=document.getElementById("bcp-editor-layout");
+  var btn=document.getElementById("bcp-tools-collapse-btn");
+  if(!root)return;
+  root.classList.toggle("bcp-tools-collapsed");
+  var collapsed=root.classList.contains("bcp-tools-collapsed");
+  if(btn) btn.textContent=collapsed?"▲ Show tools":"▼ Hide tools";
+  try{ localStorage.setItem("bcp_tools_collapsed", collapsed?"1":"0"); }catch(e){}
+}
+function bcpApplyToolsCollapsePreference(){
+  var root=document.getElementById("bcp-editor-layout");
+  var btn=document.getElementById("bcp-tools-collapse-btn");
+  if(!root||!btn)return;
+  var collapsed=false;
+  try{ collapsed=localStorage.getItem("bcp_tools_collapsed")==="1"; }catch(e){}
+  if(collapsed){
+    root.classList.add("bcp-tools-collapsed");
+    btn.textContent="▲ Show tools";
+  }else{
+    root.classList.remove("bcp-tools-collapsed");
+    btn.textContent="▼ Hide tools";
+  }
+}
 
 function bcpShowFullEditor(){
   var origView = _csView;
   _csView = "creative";
-  var area = document.getElementById("cs-content-area");
+  var area = csGetCreativeMountEl();
   if(!area) return;
 
   var fmtBtns=Object.entries(CE_FORMATS).map(function(e2){var k=e2[0],f=e2[1];return "<button onclick=\"ceSetFormat(\'"+k+"\')\" style=\"padding:4px 10px;border-radius:6px;font-size:11px;cursor:pointer;border:1px solid "+(_ceState.format===k?"#e8a838":"#333")+";background:"+(_ceState.format===k?"#e8a838":"transparent")+";color:"+(_ceState.format===k?"#000":"#ccc")+";\">"+f.icon+" "+f.label+"</button>";}).join("");
@@ -19809,22 +19916,29 @@ function bcpShowFullEditor(){
         "<span style=\"font-size:10px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:.08em;\">Format</span>",
         fmtBtns,
         "<div style=\"flex:1;min-width:8px;\"></div>",
+        "<button type=\"button\" onclick=\"csScrollToUnifiedPreview()\" style=\"padding:6px 12px;background:rgba(232,168,56,.12);border:1px solid rgba(232,168,56,.45);border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;color:#e8a838;\">👁 Preview</button>",
         "<button onclick=\"ceExportImage()\" style=\"padding:6px 14px;background:#22c55e;color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;\">⬇️ Export</button>",
         "<button onclick=\"ceUseInPost()\" style=\"padding:6px 14px;background:#1a4a7c;color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;\">→ Use in Post</button>",
         "<button onclick=\"csOpenCreativeEditor()\" style=\"padding:6px 12px;background:#222;border:1px solid #333;border-radius:7px;font-size:11px;cursor:pointer;color:#ccc;\">← Back</button>",
       "</div>",
-      "<div id=\"ce-preview-stack\" style=\"flex:1 1 44%;min-height:140px;display:flex;flex-direction:column;min-height:0;overflow:hidden;background:#050505;\">",
+      "<div id=\"ce-preview-stack\" style=\"flex:1 1 58%;min-height:160px;display:flex;flex-direction:column;min-height:0;overflow:hidden;background:#050505;\">",
         "<div id=\"ce-canvas-wrap\" style=\"flex:1 1 auto;min-height:0;overflow:hidden;display:flex;align-items:flex-start;justify-content:center;background:#050505;position:relative;\">",
           "<canvas id=\"ce-canvas\" style=\"box-shadow:0 12px 48px rgba(0,0,0,.75);cursor:crosshair;max-width:100%;max-height:100%;object-fit:contain;\"></canvas>",
         "</div>",
       "</div>",
-      "<div id=\"bcp-bottom-tools\" style=\"flex:1 1 56%;min-height:160px;max-height:min(58vh,720px);display:flex;flex-direction:column;border-top:2px solid #252525;background:#121212;min-height:0;\">",
+      "<div id=\"bcp-bottom-tools\" style=\"flex:1 1 42%;min-height:120px;max-height:min(40vh,560px);display:flex;flex-direction:column;border-top:1px solid #252525;background:#121212;min-height:0;\">",
+        "<div id=\"bcp-tools-collapse-bar\" style=\"flex-shrink:0;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 10px;border-bottom:1px solid #2a2a2a;background:#161616;\">",
+          "<span style=\"font-size:10px;font-weight:600;color:#888;letter-spacing:.04em;\">Studio tools <span style=\"color:#555;font-weight:500;\">— edit, sound, export</span></span>",
+          "<button type=\"button\" id=\"bcp-tools-collapse-btn\" onclick=\"bcpToggleToolsCollapse()\" title=\"More space for your video\" style=\"padding:6px 12px;background:#222;border:1px solid #444;border-radius:8px;color:#e8a838;font-size:11px;font-weight:800;cursor:pointer;flex-shrink:0;\">▼ Hide tools</button>",
+        "</div>",
+        "<div id=\"bcp-bottom-tools-inner\" style=\"flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden;\">",
         quickTools,
         tabBar,
         "<div id=\"bcp-tools-scroll\" style=\"flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;background:#121212;\">",
           "<div id=\"bcp-sec-edit\">",
             ceRightPanelHTML(),
           "</div>",
+        "</div>",
         "</div>",
       "</div>",
     "</div>"
@@ -19839,6 +19953,7 @@ function bcpShowFullEditor(){
     setTimeout(function(){
       bcpOpenStudioPanel && bcpOpenStudioPanel();
       bcpEditorTabSetActive("edit");
+      bcpApplyToolsCollapsePreference && bcpApplyToolsCollapsePreference();
     }, 100);
   }, 50);
 }
