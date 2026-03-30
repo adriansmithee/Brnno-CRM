@@ -15180,8 +15180,8 @@ function ceLoadVideo(file){
     _ceState.imageH = video.videoHeight * scale;
     _ceState.imageX = (fmt.w-_ceState.imageW)/2;
     _ceState.imageY = (fmt.h-_ceState.imageH)/2;
-    const canvas = document.getElementById('ce-canvas');
-    if(canvas){ canvas.style.display='block'; document.getElementById('ce-empty-state').style.display='none'; }
+    // Canvas was sized before metadata (often 1:1); re-init so backing store matches format (fixes black screen)
+    if(document.getElementById('ce-canvas')) ceInitCanvas();
     function drawFrame(){ if(_ceState.image===video){ ceRedraw(); requestAnimationFrame(drawFrame); } }
     video.play().then(drawFrame).catch(()=>{ video.currentTime=0.1; ceRedraw(); });
     ceShowVideoPanel();
@@ -15334,12 +15334,17 @@ function ceLoadVideoUrl(){
   video.onloadedmetadata=function(){
     _ceState.image=video; _ceState.isVideo=true; _ceState.videoUrl=url;
     _ceState.videoTrimStart=0; _ceState.videoTrimEnd=video.duration; _ceState.videoDuration=video.duration;
-    const fmt=CE_FORMATS[_ceState.format||'1x1'];
+    var isPortrait=video.videoHeight>video.videoWidth;
+    var isLandscape=video.videoWidth>video.videoHeight*1.3;
+    var autoFmt=_ceState.format||'1x1';
+    if(isPortrait&&autoFmt==='1x1') autoFmt='9x16';
+    if(isLandscape&&autoFmt==='1x1') autoFmt='16x9';
+    _ceState.format=autoFmt;
+    const fmt=CE_FORMATS[autoFmt]||CE_FORMATS['1x1'];
     const scale=Math.max(fmt.w/video.videoWidth,fmt.h/video.videoHeight);
     _ceState.imageW=video.videoWidth*scale; _ceState.imageH=video.videoHeight*scale;
     _ceState.imageX=(fmt.w-_ceState.imageW)/2; _ceState.imageY=(fmt.h-_ceState.imageH)/2;
-    const canvas=document.getElementById('ce-canvas');
-    if(canvas){canvas.style.display='block';document.getElementById('ce-empty-state').style.display='none';}
+    if(document.getElementById('ce-canvas')) ceInitCanvas();
     function drawFrame(){if(_ceState.image===video){ceRedraw();requestAnimationFrame(drawFrame);}}
     video.play().then(drawFrame).catch(function(){video.currentTime=0.1;ceRedraw();});
     ceShowVideoPanel(); showToast('Video loaded from URL!');
@@ -20146,7 +20151,7 @@ function bcpShowFullEditor(){
     ].join("");
 
   var stackStyle = cropOnly
-    ? "flex:1 1 auto;min-height:200px;display:flex;flex-direction:column;min-height:0;overflow:hidden;background:#050505;"
+    ? "flex:1 1 auto;display:flex;flex-direction:column;min-height:min(45vh,520px);overflow:hidden;background:#050505;"
     : "flex:1 1 58%;min-height:160px;display:flex;flex-direction:column;min-height:0;overflow:hidden;background:#050505;";
 
   var quickTools=[
@@ -20202,7 +20207,7 @@ function bcpShowFullEditor(){
     "<div id=\"bcp-editor-layout\" style=\"display:flex;flex-direction:column;height:100%;min-height:0;max-height:100%;overflow:hidden;background:#0a0a0a;border-radius:0;\">",
       topBar,
       "<div id=\"ce-preview-stack\" style=\""+stackStyle+"\">",
-        "<div id=\"ce-canvas-wrap\" style=\"flex:1 1 auto;min-height:0;overflow:hidden;display:flex;align-items:flex-start;justify-content:center;background:#050505;position:relative;\">",
+        "<div id=\"ce-canvas-wrap\" style=\"flex:1 1 auto;min-height:min(200px,35vh);overflow:hidden;display:flex;align-items:center;justify-content:center;background:#050505;position:relative;\">",
           "<canvas id=\"ce-canvas\" style=\"box-shadow:0 12px 48px rgba(0,0,0,.75);cursor:crosshair;max-width:100%;max-height:100%;object-fit:contain;\"></canvas>",
         "</div>",
       "</div>",
