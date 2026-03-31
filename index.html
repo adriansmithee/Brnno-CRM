@@ -15201,6 +15201,7 @@ function ceLoadFile(evt){
       const canvas = document.getElementById('ce-canvas');
       if(canvas){ canvas.style.display='block'; document.getElementById('ce-empty-state').style.display='none'; }
       ceUpdateImageScaleSlider();
+      ceInitCanvas();
       ceRedraw();
       showToast('💡 Use "Fill" to remove black bars, or "Fit" to show full image');
     };
@@ -26962,6 +26963,50 @@ function bcpOpenPreviewSignoff(){
   ov.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:9999;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(12px)";
   var modal=document.createElement("div");
   modal.style.cssText="background:#111;border-radius:20px;max-width:520px;width:90%;max-height:90vh;overflow-y:auto;border:1px solid #222;box-shadow:0 32px 80px rgba(0,0,0,.8)";
+  var hdr=document.createElement("div");hdr.style.cssText="padding:20px 24px;border-bottom:1px solid #222;display:flex;justify-content:space-between;align-items:center";
+  var ttl=document.createElement("div");
+  var t1=document.createElement("div");t1.style.cssText="font-size:18px;font-weight:900;color:#fff";t1.textContent="Preview & Sign Off";
+  var t2=document.createElement("div");t2.style.cssText="font-size:11px;color:#666";t2.textContent="Review before posting to social media";
+  ttl.appendChild(t1);ttl.appendChild(t2);
+  var xb=document.createElement("button");xb.textContent="x";xb.style.cssText="width:32px;height:32px;border-radius:50%;background:#222;border:none;color:#aaa;font-size:18px;cursor:pointer";xb.onclick=function(){ov.remove();};
+  hdr.appendChild(ttl);hdr.appendChild(xb);modal.appendChild(hdr);
+  if(src){var pv=document.createElement("div");pv.style.cssText="padding:20px;text-align:center;background:#0a0a0a;border-bottom:1px solid #222";var im=new Image();im.src=src;im.style.cssText="max-width:100%;max-height:300px;border-radius:12px;object-fit:contain";pv.appendChild(im);modal.appendChild(pv);}
+  var cw=document.createElement("div");cw.style.cssText="padding:16px 20px;border-bottom:1px solid #222";
+  var cl=document.createElement("div");cl.style.cssText="font-size:10px;font-weight:700;text-transform:uppercase;color:#555";cl.textContent="Caption";
+  var ta=document.createElement("textarea");ta.rows=3;ta.value=cap;ta.placeholder="Add your caption...";ta.style.cssText="width:100%;background:#1a1a1a;border:1px solid #333;border-radius:9px;padding:10px;color:#fff;font-size:12px;outline:none;resize:none;box-sizing:border-box";
+  cw.appendChild(cl);cw.appendChild(ta);modal.appendChild(cw);
+  var pw=document.createElement("div");pw.style.cssText="padding:16px 20px;border-bottom:1px solid #222";
+  var pl=document.createElement("div");pl.style.cssText="font-size:10px;font-weight:700;text-transform:uppercase;color:#555";pl.textContent="Post to Platform";
+  var pg=document.createElement("div");pg.style.cssText="display:flex;flex-wrap:wrap;gap:8px";
+  [["Instagram","https://www.instagram.com","#e1306c"],["TikTok","https://www.tiktok.com/upload","#333"],["Facebook","https://www.facebook.com","#1877f2"],["Twitter/X","https://twitter.com/compose/tweet","#14171a"]].forEach(function(p){var b=document.createElement("button");b.textContent=p[0];b.style.cssText="padding:10px 16px;border-radius:9px;font-size:12px;font-weight:700;cursor:pointer;border:1px solid "+p[2]+";background:"+p[2]+"22;color:#fff";b.onclick=(function(u){return function(){window.open(u);};})(p[1]);pg.appendChild(b);});
+  pw.appendChild(pl);pw.appendChild(pg);modal.appendChild(pw);
+  var aw=document.createElement("div");aw.style.cssText="padding:16px 20px;display:flex;gap:10px";
+  var ab=document.createElement("button");ab.textContent="Approve & Export";ab.style.cssText="flex:1;padding:13px;background:linear-gradient(135deg,#059669,#047857);color:#fff;border:none;border-radius:10px;font-size:13px;font-weight:800;cursor:pointer";
+  ab.onclick=function(){if(typeof ceExportImage==="function")ceExportImage();ov.remove();if(typeof showToast==="function")showToast("Approved!");};
+  var kb=document.createElement("button");kb.textContent="Keep Editing";kb.style.cssText="flex:1;padding:13px;background:#1a1a1a;border:1px solid #333;color:#aaa;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer";kb.onclick=function(){ov.remove();};
+  aw.appendChild(ab);aw.appendChild(kb);modal.appendChild(aw);
+  ov.appendChild(modal);document.body.appendChild(ov);
+  ov.addEventListener("click",function(e){if(e.target===ov)ov.remove();});
+}
+function ceResetAdjust(){
+  if(!window._ceState||!window._ceState.filter)return;
+  _ceState.filter={brightness:100,contrast:100,saturation:100,warmth:0,blur:0};
+  ["ce-brightness","ce-contrast","ce-saturation"].forEach(function(id){var el=document.getElementById(id);if(el)el.value=100;});
+  var wa=document.getElementById("ce-warmth");if(wa)wa.value=0;
+  var ba=document.getElementById("ce-blur");if(ba)ba.value=0;
+  if(typeof ceRedraw==="function")ceRedraw();
+  if(typeof showToast==="function")showToast("Adjustments reset");
+}
+</script>
+<script>
+function bcpOpenPreviewSignoff(){
+  var ex=document.getElementById("bcp-preview-modal");if(ex)ex.remove();
+  var canvas=document.getElementById("ce-canvas");
+  var src=canvas?canvas.toDataURL("image/png"):"";
+  var cap=(document.getElementById("bcp-caption-text")&&document.getElementById("bcp-caption-text").value)||"";
+  var ov=document.createElement("div");ov.id="bcp-preview-modal";
+  ov.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:9999;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(12px)";
+  var modal=document.createElement("div");modal.style.cssText="background:#111;border-radius:20px;max-width:520px;width:90%;max-height:90vh;overflow-y:auto;border:1px solid #222;box-shadow:0 32px 80px rgba(0,0,0,.8)";
   var hdr=document.createElement("div");hdr.style.cssText="padding:20px 24px;border-bottom:1px solid #222;display:flex;justify-content:space-between;align-items:center";
   var ttl=document.createElement("div");
   var t1=document.createElement("div");t1.style.cssText="font-size:18px;font-weight:900;color:#fff";t1.textContent="Preview & Sign Off";
