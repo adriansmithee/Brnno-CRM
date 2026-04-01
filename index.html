@@ -5339,14 +5339,18 @@ async function addRepInApp(){
   const btn = document.querySelector('#reps-page .btn-primary');
   if(btn){ btn.textContent = 'Creating...'; btn.disabled = true; }
 
-  const res = await addAccountToSB(username, password, name, false);
+  // Create Supabase Auth account + profile row via admin function
+  const created = await callAdminUserFunction({ action:'createUser', email: username, password, name });
 
   if(btn){ btn.textContent = '➕ Create Rep Account'; btn.disabled = false; }
 
-  if(!res){
-    errEl.textContent = 'Error saving to database. Check connection and try again.';
+  if(!created){
+    errEl.textContent = 'Error creating account. Check your connection and try again.';
     errEl.style.display = 'block'; return;
   }
+
+  // Also ensure profile row exists in brnno_accounts
+  await sbFetch('/rest/v1/brnno_accounts', 'POST', {username, name, is_admin: false});
 
   // Set role if provided
   if(role) await updateRoleInSB(username, role);
