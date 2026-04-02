@@ -4510,7 +4510,9 @@ function persistSession(next){
         t: now,
         ts: now,
         expMs: expMs || undefined,
-        exp: expMs ? Math.floor(expMs/1000) : undefined
+        // Keep `exp` as ms (Date.now() is ms), and provide a seconds value too.
+        exp: expMs || undefined,
+        expSec: expMs ? Math.floor(expMs/1000) : undefined
       };
       localStorage.setItem('brnno_ext', JSON.stringify(_ext));
       // Some extension implementations use different key names; keep them in sync.
@@ -5537,7 +5539,9 @@ function loginSuccess(u){
         t: Date.now(),
         ts: Date.now(),
         expMs: expMs || undefined,
-        exp: expMs ? Math.floor(expMs/1000) : undefined
+        // Keep `exp` as ms (Date.now() is ms), and provide a seconds value too.
+        exp: expMs || undefined,
+        expSec: expMs ? Math.floor(expMs/1000) : undefined
       };
       localStorage.setItem('brnno_ext', JSON.stringify(_ext));
       try{ localStorage.setItem('brnno_ext_session', JSON.stringify(_ext)); }catch(e3){}
