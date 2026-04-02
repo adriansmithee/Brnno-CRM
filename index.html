@@ -1904,7 +1904,7 @@
     <div class="nav-item" id="nav-sequences" onclick="setPage('sequences',this)"><span class="nav-icon">⚡</span> Sequences</div>
     <div class="nav-item" id="nav-deal-calc" onclick="setPage('deal-calc',this)"><span class="nav-icon">🧮</span> Deal Calculator</div>
 <div class="nav-item" id="nav-commission-calc" onclick="setPage('commission-calc',this)"><span class="nav-icon">💰</span> Commission Calc</div>
-<div class="nav-item" id="nav-commission-calc" onclick="setPage('commission-calc',this)"><span class="nav-icon">💰</span> Commission Calc</div>
+
     <div class="nav-item" id="nav-content-studio" onclick="setPage('content-studio',this)" style="display:none"><span class="nav-icon">🎬</span> Brnno Creative+</div>
 
     <div class="nav-section">Analytics</div>
@@ -1918,7 +1918,7 @@
     <div class="nav-section">Admin</div>
     <div class="nav-item" id="nav-admin-dashboard" onclick="setPage('admin-dashboard',this)" style="display:none"><span class="nav-icon">🏠</span> Admin Dashboard</div>
 <div class="nav-item" id="nav-tab-visibility" onclick="setPage('tab-visibility',this)" style="display:none"><span class="nav-icon">👁️</span> Tab Visibility</div>
-<div class="nav-item" id="nav-tab-visibility" onclick="setPage('tab-visibility',this)" style="display:none"><span class="nav-icon">👁️</span> Tab Visibility</div>
+
     <div class="nav-item" id="nav-manage-reps" onclick="setPage('reps',this)" style="display:none"><span class="nav-icon">👤</span> Manage Reps</div>
     <div class="nav-item" id="nav-org-chart" onclick="setPage('org',this)" style="display:none"><span class="nav-icon">🏢</span> Org Chart</div>
     <div class="nav-item" id="nav-deleted" onclick="setPage('deleted',this)" style="display:none"><span class="nav-icon">🗑</span> Deleted Leads</div>
@@ -5689,7 +5689,10 @@ function loginSuccess(u){
     tasks:'nav-tasks', clients:'nav-clients', accounts:'nav-accounts', forecast:'nav-forecast', playbooks:'nav-playbooks', reports:'nav-reports',
     kpi:'nav-kpi', opportunities:'nav-opportunities', 'opp-kanban':'nav-opportunities',
     'demo-report':'nav-demo-report', 'admin-dashboard':'nav-admin-dashboard',
-    reps:'nav-manage-reps', sequences:'nav-sequences'
+    reps:'nav-manage-reps', sequences:'nav-sequences',
+    'commission-calc':'nav-commission-calc',
+    'tab-visibility':'nav-tab-visibility',
+    'detailer-jobs':'nav-detailer-jobs'
   };
   const lastNavId = pageNavMap[lastPage] || 'nav-leads';
   const lastNavEl = document.getElementById(lastNavId);
