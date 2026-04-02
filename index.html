@@ -4514,6 +4514,11 @@ function persistSession(next){
         exp: expMs || undefined,
         expSec: expMs ? Math.floor(expMs/1000) : undefined
       };
+      // Also expose as globals for extensions that read directly from the CRM page context.
+      try{
+        window.__BRNNO_EXT = _ext;
+        window.__BRNNO_SESSION = merged;
+      }catch(e0){}
       localStorage.setItem('brnno_ext', JSON.stringify(_ext));
       // Some extension implementations use different key names; keep them in sync.
       try{ localStorage.setItem('brnno_ext_session', JSON.stringify(_ext)); }catch(e3){}
@@ -5543,6 +5548,11 @@ function loginSuccess(u){
         exp: expMs || undefined,
         expSec: expMs ? Math.floor(expMs/1000) : undefined
       };
+      // Expose on the window as well (same reason as persistSession()).
+      try{
+        window.__BRNNO_EXT = _ext;
+        window.__BRNNO_SESSION = u;
+      }catch(e0){}
       localStorage.setItem('brnno_ext', JSON.stringify(_ext));
       try{ localStorage.setItem('brnno_ext_session', JSON.stringify(_ext)); }catch(e3){}
       try{ localStorage.setItem('brnno_ext_token', tok); }catch(e4){}
