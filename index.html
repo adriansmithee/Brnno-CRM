@@ -1903,6 +1903,7 @@
     <div class="nav-item" id="nav-playbooks" onclick="setPage('playbooks',this)"><span class="nav-icon">📖</span> Playbooks</div>
     <div class="nav-item" id="nav-sequences" onclick="setPage('sequences',this)"><span class="nav-icon">⚡</span> Sequences</div>
     <div class="nav-item" id="nav-deal-calc" onclick="setPage('deal-calc',this)"><span class="nav-icon">🧮</span> Deal Calculator</div>
+<div class="nav-item" id="nav-commission-calc" onclick="setPage('commission-calc',this)"><span class="nav-icon">💰</span> Commission Calc</div>
     <div class="nav-item" id="nav-content-studio" onclick="setPage('content-studio',this)" style="display:none"><span class="nav-icon">🎬</span> Brnno Creative+</div>
 
     <div class="nav-section">Analytics</div>
@@ -1915,6 +1916,7 @@
 
     <div class="nav-section">Admin</div>
     <div class="nav-item" id="nav-admin-dashboard" onclick="setPage('admin-dashboard',this)" style="display:none"><span class="nav-icon">🏠</span> Admin Dashboard</div>
+<div class="nav-item" id="nav-tab-visibility" onclick="setPage('tab-visibility',this)" style="display:none"><span class="nav-icon">👁️</span> Tab Visibility</div>
     <div class="nav-item" id="nav-manage-reps" onclick="setPage('reps',this)" style="display:none"><span class="nav-icon">👤</span> Manage Reps</div>
     <div class="nav-item" id="nav-org-chart" onclick="setPage('org',this)" style="display:none"><span class="nav-icon">🏢</span> Org Chart</div>
     <div class="nav-item" id="nav-deleted" onclick="setPage('deleted',this)" style="display:none"><span class="nav-icon">🗑</span> Deleted Leads</div>
@@ -25945,6 +25947,52 @@ function dpsLogNote(){
 .dj-checklist-item { display:flex; align-items:center; gap:8px; padding:6px 0; font-size:13px; color:var(--text); border-bottom:1px solid rgba(0,0,0,.05); }
 .dj-checklist-item::before { content:'☐'; font-size:16px; color:var(--text2); flex-shrink:0; }
 
+
+/* ══ COMMISSION CALCULATOR ══ */
+#comm-page{padding:24px;max-width:1100px}
+.comm-title{font-size:22px;font-weight:700;margin-bottom:6px}
+.comm-subtitle{font-size:13px;color:var(--text2);margin-bottom:24px}
+.comm-tabs{display:flex;gap:8px;margin-bottom:24px}
+.comm-tab{padding:8px 20px;border-radius:20px;border:1px solid var(--border);background:var(--surface);color:var(--text2);font-size:13px;font-weight:600;cursor:pointer;transition:all .15s}
+.comm-tab.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+.comm-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px}
+.comm-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px}
+.comm-card-title{font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--text2);margin-bottom:14px}
+.comm-input-row{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.comm-input-row label{font-size:12px;color:var(--text2);min-width:160px}
+.comm-input{background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:7px 10px;font-size:13px;color:var(--text);width:100px;outline:none}
+.comm-input:focus{border-color:var(--gold)}
+.comm-result-box{background:var(--accent);border-radius:var(--radius);padding:20px 24px;color:#fff;margin-top:16px}
+.comm-result-box.sdr{background:var(--green)}
+.comm-result-label{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;opacity:.8;margin-bottom:4px}
+.comm-result-total{font-size:36px;font-weight:900}
+.comm-result-breakdown{font-size:12px;opacity:.85;margin-top:8px;line-height:1.8}
+.comm-tier-badge{display:inline-block;padding:3px 10px;border-radius:12px;font-size:11px;font-weight:800;text-transform:uppercase}
+.comm-tier-1{background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.2)}
+.comm-tier-2{background:rgba(212,160,23,.2);color:#b8860b;border:1px solid rgba(212,160,23,.4)}
+.comm-tier-3{background:rgba(30,122,80,.15);color:var(--green);border:1px solid rgba(30,122,80,.3)}
+.comm-breakdown-table{width:100%;border-collapse:collapse;margin-top:16px;font-size:12px}
+.comm-breakdown-table th{text-align:left;padding:8px 12px;background:var(--surface2);color:var(--text2);font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.05em}
+.comm-breakdown-table td{padding:8px 12px;border-top:1px solid var(--border);color:var(--text)}
+.comm-breakdown-table tr:hover td{background:var(--surface2)}
+.comm-highlight{color:var(--green);font-weight:700}
+.comm-divider{border:none;border-top:1px solid var(--border);margin:16px 0}
+.comm-passive{background:linear-gradient(135deg,var(--accent),#2a5aab);border-radius:var(--radius);padding:16px 20px;color:#fff;margin-top:12px;display:flex;align-items:center;justify-content:space-between}
+.comm-passive-label{font-size:11px;opacity:.8;margin-bottom:2px}
+.comm-passive-val{font-size:22px;font-weight:900}
+.comm-active-row td{background:rgba(26,58,107,.08)!important;font-weight:700}
+/* ══ TAB VISIBILITY ══ */
+.tab-vis-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;margin:16px 0}
+.tab-vis-item{display:flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-size:13px}
+.tab-vis-item input[type=checkbox]{width:16px;height:16px;cursor:pointer;accent-color:var(--accent)}
+.tab-vis-item label{cursor:pointer;flex:1}
+.tab-vis-role-btn{padding:6px 14px;border-radius:20px;border:1px solid var(--border);background:var(--surface);color:var(--text2);font-size:12px;cursor:pointer;transition:all .15s;margin-right:6px;margin-bottom:6px}
+.tab-vis-role-btn.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+/* ══ ROLE BADGES ══ */
+.role-badge{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:12px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em}
+.role-badge-sdr{background:rgba(212,160,23,.15);color:#b8860b;border:1px solid rgba(212,160,23,.3)}
+.role-badge-ae{background:rgba(26,58,107,.12);color:var(--accent);border:1px solid rgba(26,58,107,.25)}
+.role-badge-admin{background:rgba(168,50,38,.1);color:var(--red);border:1px solid rgba(168,50,38,.25)}
 </style>
 
 <script>
@@ -27219,6 +27267,255 @@ function ceResetAdjust(){
   if(typeof ceRedraw==="function")ceRedraw();
   if(typeof showToast==="function")showToast("Adjustments reset");
 }
+</script>
+
+<script id="brnno-features-js">
+// ══ COMMISSION CALCULATOR ══
+const _ALL_TABS = [
+  {key:'home',label:'🏠 Home'},{key:'leads',label:'👥 All Leads'},{key:'opportunities',label:'💎 Opportunities'},
+  {key:'tasks',label:'✅ My Tasks'},{key:'clients',label:'🏆 Clients'},{key:'detailer-jobs',label:'🔧 Detailer Jobs'},
+  {key:'accounts',label:'🏢 Accounts'},{key:'calendar',label:'📆 Calendar'},{key:'playbooks',label:'📖 Playbooks'},
+  {key:'sequences',label:'⚡ Sequences'},{key:'deal-calc',label:'🧮 Deal Calculator'},
+  {key:'commission-calc',label:'💰 Commission Calc'},{key:'content-studio',label:'🎬 Content Studio'},
+  {key:'kpi',label:'📈 KPI Dashboard'},{key:'reports',label:'📊 Reports'},{key:'pipeline',label:'🔀 Pipeline'},
+  {key:'forecast',label:'🔮 Forecast'},{key:'activity',label:'⚡ Activity Feed'},
+  {key:'demo-report',label:'📅 Demo Schedule'},{key:'tab-visibility',label:'👁️ Tab Visibility'},
+];
+const _ROLE_PRESETS = {
+  sdr:['home','leads','tasks','calendar','activity','commission-calc','content-studio'],
+  ae:['home','leads','opportunities','tasks','clients','pipeline','forecast','deal-calc','commission-calc','calendar','activity','demo-report'],
+  admin:_ALL_TABS.map(t=>t.key)
+};
+
+function _loadTabVis(role){try{const s=localStorage.getItem('brnno_tab_vis_'+role);if(s)return JSON.parse(s);}catch(e){}return _ROLE_PRESETS[role]||_ALL_TABS.map(t=>t.key);}
+function _saveTabVis(role,tabs){localStorage.setItem('brnno_tab_vis_'+role,JSON.stringify(tabs));}
+
+window.renderCommissionCalc = function(){
+  const c=document.getElementById('content');if(!c)return;
+  c.innerHTML=`<div id="comm-page">
+  <div class="comm-title">💰 Commission Calculator</div>
+  <div class="comm-subtitle">Calculate AE residuals, SDR show-up pay, bonuses, and Triple Crown earnings</div>
+  <div class="comm-tabs">
+    <button class="comm-tab active" id="comm-tab-ae" onclick="commTab('ae')">🏆 Account Executive (AE)</button>
+    <button class="comm-tab" id="comm-tab-sdr" onclick="commTab('sdr')">📞 Sales Dev Rep (SDR)</button>
+  </div>
+  <div id="comm-ae">
+    <div class="comm-grid">
+      <div class="comm-card">
+        <div class="comm-card-title">📊 Your Monthly Numbers</div>
+        <div class="comm-input-row"><label>Full Deals closed ($80+/mo)</label><input class="comm-input" type="number" id="ae-full" value="0" min="0" oninput="calcAE()"></div>
+        <div class="comm-input-row"><label>Micro-Deals ($20–$79/mo)</label><input class="comm-input" type="number" id="ae-micro" value="0" min="0" oninput="calcAE()"></div>
+        <div class="comm-input-row"><label>Avg deal value ($/mo)</label><input class="comm-input" type="number" id="ae-avg" value="120" min="20" oninput="calcAE()"></div>
+        <hr class="comm-divider">
+        <div style="font-size:11px;color:var(--text2);line-height:1.8"><strong>Credit System:</strong><br>• $80+/mo = <strong>1.0 credit</strong><br>• $20–$79/mo = <strong>0.5 credit</strong><br>• Free = 0 credits</div>
+      </div>
+      <div class="comm-card">
+        <div class="comm-card-title">🎯 Tier &amp; Results</div>
+        <div id="ae-tier-badge" style="margin-bottom:10px"><span class="comm-tier-badge comm-tier-1">Tier 1 — 15% Residual</span></div>
+        <div style="font-size:12px;color:var(--text2);margin-bottom:12px" id="ae-credits-lbl">Credits: <strong>0.0</strong></div>
+        <table class="comm-breakdown-table">
+          <thead><tr><th>Level</th><th>Credits</th><th>Residual %</th><th>Bonus</th></tr></thead>
+          <tbody>
+            <tr id="ae-tr1"><td>Tier 1</td><td>0–10</td><td>15%</td><td>$250 @ 10</td></tr>
+            <tr id="ae-tr2"><td>Tier 2</td><td>11–20</td><td>20%</td><td>$500</td></tr>
+            <tr id="ae-tr3"><td>Tier 3</td><td>21+</td><td>25%</td><td>$1,000</td></tr>
+          </tbody>
+        </table>
+        <div class="comm-result-box" id="ae-result">
+          <div class="comm-result-label">Monthly Triple Crown Bonus</div>
+          <div class="comm-result-total" id="ae-bonus">$0</div>
+          <div class="comm-result-breakdown" id="ae-break"></div>
+        </div>
+        <div class="comm-passive" id="ae-passive">
+          <div><div class="comm-passive-label">Monthly Residuals Added</div><div class="comm-passive-val" id="ae-res-mo">$0/mo</div></div>
+          <div style="text-align:right"><div class="comm-passive-label">Annual Passive Income</div><div class="comm-passive-val" id="ae-res-yr">$0/yr</div></div>
+        </div>
+      </div>
+    </div>
+    <div class="comm-card">
+      <div class="comm-card-title">📈 AE Performance Examples</div>
+      <table class="comm-breakdown-table">
+        <thead><tr><th>Scenario</th><th>Credits</th><th>Tier</th><th>Triple Crown</th><th>Residuals/mo</th><th>Annual Impact</th></tr></thead>
+        <tbody>
+          <tr><td>10 deals @ $120</td><td>10</td><td>Tier 1</td><td>$250</td><td>$180</td><td>$2,160/yr</td></tr>
+          <tr><td>16 credits (mixed)</td><td>16</td><td><span class="comm-tier-badge comm-tier-2">Tier 2</span></td><td class="comm-highlight">$500</td><td>$656</td><td class="comm-highlight">$7,872/yr</td></tr>
+          <tr><td>21+ credits</td><td>21</td><td><span class="comm-tier-badge comm-tier-3">Tier 3</span></td><td class="comm-highlight">$1,000</td><td>$1,076</td><td class="comm-highlight">$12,912/yr</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <div id="comm-sdr" style="display:none">
+    <div class="comm-grid">
+      <div class="comm-card">
+        <div class="comm-card-title">📊 Your Monthly Numbers</div>
+        <div class="comm-input-row"><label>Qualified show-ups</label><input class="comm-input" type="number" id="sdr-shows" value="0" min="0" oninput="calcSDR()"></div>
+        <div class="comm-input-row"><label>Closing credits (from AE)</label><input class="comm-input" type="number" id="sdr-creds" value="0" min="0" oninput="calcSDR()"></div>
+        <hr class="comm-divider">
+        <div style="font-size:11px;color:var(--text2);line-height:1.8"><strong>Show-Up Rules:</strong><br>• Decision-maker must attend<br>• Full demo required<br>• Qualified business owner<br>• Resets the 1st of every month</div>
+      </div>
+      <div class="comm-card">
+        <div class="comm-card-title">🎯 Tier &amp; Results</div>
+        <div id="sdr-tier-badge" style="margin-bottom:10px"><span class="comm-tier-badge comm-tier-1">Tier 1 — $25/show-up</span></div>
+        <div style="font-size:12px;color:var(--text2);margin-bottom:12px" id="sdr-creds-lbl">Closing credits: <strong>0</strong></div>
+        <table class="comm-breakdown-table">
+          <thead><tr><th>Tier</th><th>Show-Ups</th><th>Per Show-Up</th><th>Volume Bonus</th></tr></thead>
+          <tbody>
+            <tr><td>Tier 1</td><td>1–10</td><td>$25.00</td><td>$125 @ 10 credits</td></tr>
+            <tr><td>Tier 2</td><td>11–20</td><td>$35.00</td><td>$250 @ 16 credits</td></tr>
+            <tr><td>Tier 3</td><td>21+</td><td>$45.00</td><td>$500 @ 21+ credits</td></tr>
+          </tbody>
+        </table>
+        <div class="comm-result-box sdr">
+          <div class="comm-result-label">Total Monthly Earnings</div>
+          <div class="comm-result-total" id="sdr-total">$0</div>
+          <div class="comm-result-breakdown" id="sdr-break"></div>
+        </div>
+      </div>
+    </div>
+    <div class="comm-card">
+      <div class="comm-card-title">📈 SDR Performance Examples</div>
+      <table class="comm-breakdown-table">
+        <thead><tr><th>Scenario</th><th>Shows</th><th>Credits</th><th>Show Pay</th><th>Bonuses</th><th>Total</th></tr></thead>
+        <tbody>
+          <tr><td>Tier 2 example</td><td>16</td><td>12</td><td>$560</td><td>$240 + $125</td><td class="comm-highlight">$925</td></tr>
+          <tr><td>Tier 3 example</td><td>25</td><td>22</td><td>$1,125</td><td>$440 + $500</td><td class="comm-highlight">$2,065</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>`;
+};
+
+window.commTab = function(t){
+  document.getElementById('comm-ae').style.display=t==='ae'?'block':'none';
+  document.getElementById('comm-sdr').style.display=t==='sdr'?'block':'none';
+  document.getElementById('comm-tab-ae').classList.toggle('active',t==='ae');
+  document.getElementById('comm-tab-sdr').classList.toggle('active',t==='sdr');
+};
+
+window.calcAE = function(){
+  const full=parseInt(document.getElementById('ae-full')?.value)||0;
+  const micro=parseInt(document.getElementById('ae-micro')?.value)||0;
+  const avg=parseFloat(document.getElementById('ae-avg')?.value)||120;
+  const credits=full*1.0+micro*0.5;
+  let tier=1,pct=.15,bonus=0;
+  if(credits>=21){tier=3;pct=.25;bonus=1000;}
+  else if(credits>=11){tier=2;pct=.20;bonus=500;}
+  else if(credits>=10){tier=1;pct=.15;bonus=250;}
+  const tc=['comm-tier-1','comm-tier-2','comm-tier-3'][tier-1];
+  const tl=['Tier 1 — 15% Residual','Tier 2 — 20% Residual','Tier 3 — 25% Residual'][tier-1];
+  const res=((full*avg)+(micro*avg*0.5))*pct;
+  const el=id=>document.getElementById(id);
+  if(el('ae-tier-badge'))el('ae-tier-badge').innerHTML=`<span class="comm-tier-badge ${tc}">${tl}</span>`;
+  if(el('ae-credits-lbl'))el('ae-credits-lbl').innerHTML=`Credits: <strong>${credits.toFixed(1)}</strong>`;
+  if(el('ae-bonus'))el('ae-bonus').textContent='$'+bonus.toLocaleString();
+  if(el('ae-break'))el('ae-break').textContent=credits.toFixed(1)+' credits → '+(bonus>0?'🏆 Triple Crown Unlocked!':Math.ceil(10-credits)+' more to Tier 1 bonus');
+  if(el('ae-res-mo'))el('ae-res-mo').textContent='$'+Math.round(res).toLocaleString()+'/mo';
+  if(el('ae-res-yr'))el('ae-res-yr').textContent='$'+Math.round(res*12).toLocaleString()+'/yr';
+  ['ae-tr1','ae-tr2','ae-tr3'].forEach((id,i)=>{const r=el(id);if(r)r.className=i+1===tier?'comm-active-row':'';});
+};
+
+window.calcSDR = function(){
+  const shows=parseInt(document.getElementById('sdr-shows')?.value)||0;
+  const creds=parseInt(document.getElementById('sdr-creds')?.value)||0;
+  let pay,tl,tc;
+  if(shows>=21){pay=45;tl='Tier 3 — $45/show-up';tc='comm-tier-3';}
+  else if(shows>=11){pay=35;tl='Tier 2 — $35/show-up';tc='comm-tier-2';}
+  else{pay=25;tl='Tier 1 — $25/show-up';tc='comm-tier-1';}
+  const showPay=shows*pay;
+  let vol=0;if(creds>=21)vol=500;else if(creds>=16)vol=250;else if(creds>=10)vol=125;
+  const total=showPay+vol;
+  const el=id=>document.getElementById(id);
+  if(el('sdr-tier-badge'))el('sdr-tier-badge').innerHTML=`<span class="comm-tier-badge ${tc}">${tl}</span>`;
+  if(el('sdr-creds-lbl'))el('sdr-creds-lbl').innerHTML=`Closing credits: <strong>${creds}</strong>`;
+  if(el('sdr-total'))el('sdr-total').textContent='$'+total.toLocaleString();
+  if(el('sdr-break'))el('sdr-break').textContent='Show-up pay: $'+showPay.toLocaleString()+' + Volume bonus: $'+vol.toLocaleString()+(vol>0?' 🏆':'');
+};
+
+// ══ TAB VISIBILITY ══
+window._tvRole='sdr';
+window.renderTabVisibilityPage = function(){
+  const c=document.getElementById('content');if(!c)return;
+  const role=window._tvRole||'sdr';
+  const vis=_loadTabVis(role);
+  c.innerHTML=`<div style="padding:24px;max-width:900px">
+    <div style="font-size:22px;font-weight:700;margin-bottom:6px">👁️ Tab Visibility</div>
+    <div style="font-size:13px;color:var(--text2);margin-bottom:20px">Control which pages each role sees in the sidebar. Saves automatically.</div>
+    <div style="margin-bottom:16px">
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text2);margin-bottom:10px">Configure for role:</div>
+      <button class="tab-vis-role-btn ${role==='sdr'?'active':''}" onclick="window._tvRole='sdr';renderTabVisibilityPage()">📞 SDR</button>
+      <button class="tab-vis-role-btn ${role==='ae'?'active':''}" onclick="window._tvRole='ae';renderTabVisibilityPage()">🏆 AE</button>
+      <button class="tab-vis-role-btn ${role==='admin'?'active':''}" onclick="window._tvRole='admin';renderTabVisibilityPage()">🔑 Admin</button>
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
+      <button onclick="tvPreset()" style="padding:6px 14px;border-radius:6px;border:1px solid var(--gold);background:transparent;color:var(--gold-dim);font-size:12px;cursor:pointer">↺ Reset to Default</button>
+      <button onclick="tvAll(true)" style="padding:6px 14px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--text2);font-size:12px;cursor:pointer">Select All</button>
+      <button onclick="tvAll(false)" style="padding:6px 14px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--text2);font-size:12px;cursor:pointer">Clear All</button>
+    </div>
+    <div class="tab-vis-grid">
+      ${_ALL_TABS.map(t=>`<div class="tab-vis-item"><input type="checkbox" id="tv-${t.key}" ${vis.includes(t.key)?'checked':''} onchange="tvSave()"><label for="tv-${t.key}">${t.label}</label></div>`).join('')}
+    </div>
+    <div style="margin-top:16px;padding:12px 18px;background:rgba(26,58,107,.08);border-radius:8px;font-size:12px;color:var(--accent)">
+      ✅ ${vis.length} tabs visible for ${role.toUpperCase()} — changes apply on next login
+    </div>
+    <div style="margin-top:12px;padding:12px 18px;background:var(--surface2);border-radius:8px;font-size:12px;color:var(--text2);line-height:1.7">
+      <strong>Tip:</strong> SDRs should see Leads, Tasks, Calendar, Commission Calc.<br>
+      AEs should see Opportunities, Pipeline, Forecast, Deal Calculator.
+    </div>
+  </div>`;
+};
+window.tvSave=function(){
+  const role=window._tvRole||'sdr';
+  const checked=_ALL_TABS.filter(t=>document.getElementById('tv-'+t.key)?.checked).map(t=>t.key);
+  _saveTabVis(role,checked);
+  applyTabVis();
+  if(typeof showToast==='function')showToast('✅ Tab visibility saved for '+role.toUpperCase());
+};
+window.tvPreset=function(){const r=window._tvRole||'sdr';_saveTabVis(r,_ROLE_PRESETS[r]||_ALL_TABS.map(t=>t.key));renderTabVisibilityPage();applyTabVis();};
+window.tvAll=function(v){_ALL_TABS.forEach(t=>{const el=document.getElementById('tv-'+t.key);if(el)el.checked=v;});tvSave();};
+
+window.applyTabVis=function(){
+  const role=window._currentUserRole||'ae';
+  if(role==='admin')return;
+  const vis=_loadTabVis(role);
+  _ALL_TABS.forEach(t=>{const el=document.getElementById('nav-'+t.key);if(el&&el.id!=='nav-'+role)el.style.display=vis.includes(t.key)?'':'none';});
+  // Always show home
+  const h=document.getElementById('nav-home');if(h)h.style.display='';
+};
+
+// ══ ROLE DETECTION ON LOGIN ══
+// Hook into setPage to handle new pages
+(function(){
+  const _orig2=window.setPage;
+  window.setPage=function(page,el){
+    _orig2(page,el);
+    window._currentPage=page;
+    if(page==='commission-calc'){renderCommissionCalc();setTimeout(()=>{calcAE();calcSDR();},50);}
+    if(page==='tab-visibility'){renderTabVisibilityPage();}
+  };
+})();
+
+// Detect role and apply tab visibility after login
+(function initRoleAndTabs(){
+  if(typeof getAccounts!=='function'||typeof currentRepEmail==='undefined'||!currentRepEmail){
+    setTimeout(initRoleAndTabs,1500);return;
+  }
+  getAccounts().then(accs=>{
+    const me=accs.find(a=>a.username===currentRepEmail);
+    window._currentUserRole=me?(me.isAdmin?'admin':(me.role||'ae').toLowerCase()):'ae';
+    applyTabVis();
+    // Show role badge in sidebar
+    const ra=document.querySelector('.rep-area');
+    if(ra&&!document.getElementById('brnno-role-badge')){
+      const badge=document.createElement('div');
+      badge.id='brnno-role-badge';
+      badge.style.cssText='margin-top:6px;text-align:center';
+      const r=window._currentUserRole;
+      badge.innerHTML=`<span class="role-badge role-badge-${r}">${r.toUpperCase()}</span>`;
+      ra.appendChild(badge);
+    }
+  }).catch(()=>{window._currentUserRole='ae';});
+})();
 </script>
 </body>
 </html>
