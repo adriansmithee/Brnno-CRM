@@ -2565,10 +2565,6 @@
           <div class="info-value" id="panel-source">—</div>
         </div>
         <div class="info-field">
-          <div class="info-label">Website</div>
-          <div class="info-value" id="panel-website"><span style="color:var(--text3)">—</span></div>
-        </div>
-        <div class="info-field">
           <div class="info-label">Solo Operator?</div>
           <div class="info-value" id="panel-soloOp">—</div>
         </div>
@@ -4435,6 +4431,8 @@ let contactsByAccountId = {};
 // ════════════════════════════════════
 // SUPABASE CONFIG
 // ════════════════════════════════════
+// Build stamp (helps debugging extension/session issues on the deployed site)
+window.__BRNNO_CRM_BUILD = "crm_extsession_patch_v3_2026-04-02";
 const SB_URL = 'https://fdpjqwywzpltxkqqbggc.supabase.co';
 const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZkcGpxd3l3enBsdHhrcXFiZ2djIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI2NzU4NTcsImV4cCI6MjA4ODI1MTg1N30.HgXxz7Fdn0EZ0lUviHaxaDSPfCeCACG5oBb35lxxM8k';
 
@@ -4486,6 +4484,43 @@ function persistSession(next){
   if(cur.user && !merged.user) merged.user = cur.user;
   try{ sessionStorage.setItem('brnno_session', JSON.stringify(merged)); }catch(e){}
   try{ localStorage.setItem('brnno_session', JSON.stringify(merged)); }catch(e){}
+  // Keep the browser extension session key fresh.
+  // The extension reads `brnno_ext` from localStorage to validate an active CRM session.
+  // Without this, the extension can keep using a stale token written on an older login.
+  try{
+    const tok = merged && merged.access_token ? String(merged.access_token) : '';
+    const em =
+      merged?.username ||
+      merged?.email ||
+      merged?.user?.email ||
+      merged?.user?.username ||
+      '';
+    if(tok && em){
+      const expMs = jwtExpMs(tok);
+      const now = Date.now();
+      const alias = merged?.username || merged?.user?.username || em;
+      const _ext = {
+        access_token: tok,
+        refresh_token: merged?.refresh_token || undefined,
+        em: em,
+        a: alias,
+        email: em,
+        username: alias,
+        at: now,
+        t: now,
+        ts: now,
+        expMs: expMs || undefined,
+        exp: expMs ? Math.floor(expMs/1000) : undefined
+      };
+      localStorage.setItem('brnno_ext', JSON.stringify(_ext));
+      // Some extension implementations use different key names; keep them in sync.
+      try{ localStorage.setItem('brnno_ext_session', JSON.stringify(_ext)); }catch(e3){}
+      try{ localStorage.setItem('brnno_ext_token', tok); }catch(e4){}
+      try{ sessionStorage.setItem('brnno_ext', JSON.stringify(_ext)); }catch(e2){}
+      try{ sessionStorage.setItem('brnno_ext_session', JSON.stringify(_ext)); }catch(e5){}
+      try{ sessionStorage.setItem('brnno_ext_token', tok); }catch(e6){}
+    }
+  }catch(e){}
   return merged;
 }
 
@@ -4520,6 +4555,27 @@ async function refreshSupabaseSession(){
     user: auth.user || undefined
   });
   return auth.access_token;
+}
+
+function startAuthTokenAutoRefresh(){
+  if(window._brnnoAuthRefreshTimer) return;
+  window._brnnoAuthRefreshTimer = setInterval(async function(){
+    try{
+      if(!window._authReady) return;
+      if(window._brnnoAuthRefreshInFlight) return;
+      const s = getSessionObj();
+      const tok = s && s.access_token ? String(s.access_token) : '';
+      if(!tok) return;
+      const expMs = jwtExpMs(tok);
+      if(!expMs) return;
+      // Refresh ~2-3 minutes before expiry (or immediately if already expired).
+      if((expMs - Date.now()) < (3*60*1000)){
+        window._brnnoAuthRefreshInFlight = true;
+        try{ await refreshSupabaseSession(); }catch(e){}
+        window._brnnoAuthRefreshInFlight = false;
+      }
+    }catch(e){}
+  }, 60000);
 }
 
 async function sbAuthFetch(path, method='GET', body=null, extraHeaders={}){
@@ -5107,7 +5163,19 @@ async function initAuth(){
     // Don't clear auth-loading here - keep overlay until we know auth state
     const session = sessionStorage.getItem('brnno_session') || localStorage.getItem('brnno_session');
     if(session){
-      const u=JSON.parse(session);
+      let u=JSON.parse(session);
+      // If the stored access token is expiring soon, refresh now so the extension
+      // doesn't immediately report "session expired" using a stale token.
+      try{
+        const expMs = jwtExpMs(u && u.access_token);
+        if(expMs && expMs > 0 && (expMs - Date.now()) < (5*60*1000)){
+          const newTok = await refreshSupabaseSession();
+          if(newTok){
+            // refreshSupabaseSession persists the merged session; re-read it
+            u = getSessionObj();
+          }
+        }
+      }catch(e){}
       // Mirror + preserve tokens
       try{ persistSession(u); }catch(e){}
       // If this is an auth-token session, load profile details from brnno_accounts by email (username)
@@ -5339,18 +5407,14 @@ async function addRepInApp(){
   const btn = document.querySelector('#reps-page .btn-primary');
   if(btn){ btn.textContent = 'Creating...'; btn.disabled = true; }
 
-  // Create Supabase Auth account + profile row via admin function
-  const created = await callAdminUserFunction({ action:'createUser', email: username, password, name });
+  const res = await addAccountToSB(username, password, name, false);
 
   if(btn){ btn.textContent = '➕ Create Rep Account'; btn.disabled = false; }
 
-  if(!created){
-    errEl.textContent = 'Error creating account. Check your connection and try again.';
+  if(!res){
+    errEl.textContent = 'Error saving to database. Check connection and try again.';
     errEl.style.display = 'block'; return;
   }
-
-  // Also ensure profile row exists in brnno_accounts
-  await sbFetch('/rest/v1/brnno_accounts', 'POST', {username, name, is_admin: false});
 
   // Set role if provided
   if(role) await updateRoleInSB(username, role);
@@ -5455,7 +5519,36 @@ function loginSuccess(u){
   getAccounts().then(accounts=>{
     accounts.forEach(a=>{ if(!knownReps.find(r=>r.name===a.name)) knownReps.push({name:a.name,email:a.username}); });
   }).catch(()=>{});
+  // Refresh the extension-readable session token on every successful login.
+  // (Some extension implementations rely on `localStorage.brnno_ext` instead of `brnno_session`.)
+  try{
+    const tok = u && u.access_token ? String(u.access_token) : '';
+    const em = (u?.username || u?.email || u?.user?.email || u?.user?.username || '');
+    if(tok && em){
+      const expMs = jwtExpMs(tok);
+      const _ext = {
+        access_token: tok,
+        refresh_token: u?.refresh_token || undefined,
+        em: em,
+        a: (u?.username || u?.email || u?.user?.email || u?.user?.username || em),
+        email: em,
+        username: (u?.username || u?.email || u?.user?.email || u?.user?.username || em),
+        at: Date.now(),
+        t: Date.now(),
+        ts: Date.now(),
+        expMs: expMs || undefined,
+        exp: expMs ? Math.floor(expMs/1000) : undefined
+      };
+      localStorage.setItem('brnno_ext', JSON.stringify(_ext));
+      try{ localStorage.setItem('brnno_ext_session', JSON.stringify(_ext)); }catch(e3){}
+      try{ localStorage.setItem('brnno_ext_token', tok); }catch(e4){}
+      try{ sessionStorage.setItem('brnno_ext', JSON.stringify(_ext)); }catch(e2){}
+      try{ sessionStorage.setItem('brnno_ext_session', JSON.stringify(_ext)); }catch(e5){}
+      try{ sessionStorage.setItem('brnno_ext_token', tok); }catch(e6){}
+    }
+  }catch(e){}
   window._authReady = true; // mark session as fully active
+  startAuthTokenAutoRefresh();
   loadData().then(()=>{
     renderAll();
     // Support deep links like ?leadId=123 after any kind of login
@@ -14285,8 +14378,7 @@ function csOpenCompose(postOrId){
 
 function csPreviewHTML(p){
   const caption = p.caption||'Your caption will appear here...';
-  const platforms = p.platforms||['instagram'];
-  const plat = CS_PLATFORMS.find(pl=>pl.id===platforms[0]) || CS_PLATFORMS[0];
+  const platforms = (p.platforms&&p.platforms.length)?p.platforms:['instagram'];
   const rep = currentRep || 'Your Brand';
   const vid = p.videoData || window._cePendingVideoUrl || null;
   const img = (!vid && (p.imageData || window._cePendingImage)) || null;
@@ -14295,43 +14387,43 @@ function csPreviewHTML(p){
     ? '<img src="'+avatarUrl+'" style="width:32px;height:32px;border-radius:50%;object-fit:cover;">'
     : '<div style="width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,var(--gold2),var(--accent));display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:800;color:#fff;">'+( rep[0]||'B')+'</div>';
 
-  const imageSection = vid
-    ? '<video src="'+vid+'" controls muted playsinline style="width:100%;max-height:min(320px,45vh);object-fit:contain;border-radius:8px;margin-bottom:10px;background:#000;"></video>'
-    : img
-    ? '<img src="'+img+'" alt="" style="width:100%;max-height:min(240px,40vh);object-fit:contain;border-radius:8px;margin-bottom:10px;">'
-    : '<div style="width:100%;height:160px;background:#f3f4f6;border-radius:8px;margin-bottom:10px;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:6px;">'
-      +'<span style="font-size:28px;">'+plat.icon+'</span>'
-      +'<span style="font-size:10px;color:#aaa;">Attach media from Creative+</span>'
-      +'</div>';
+  const cards = platforms.map(function(pid){
+    const plat = CS_PLATFORMS.find(pl=>pl.id===pid) || CS_PLATFORMS[0];
 
-  return '<div style="background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,.15);">'
-    // Platform header
-    +'<div style="padding:8px 12px;border-bottom:1px solid #eee;display:flex;align-items:center;gap:6px;">'
-      +'<div style="font-size:14px;">'+plat.icon+'</div>'
-      +'<div style="font-size:11px;font-weight:700;color:#555;">'+plat.label+'</div>'
-    +'</div>'
-    // Post body
-    +'<div style="padding:10px 12px;">'
-      // User row
-      +'<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">'
-        +avatarHtml
-        +'<div>'
-          +'<div style="font-size:12px;font-weight:700;color:#111;">'+rep+'</div>'
-          +'<div style="font-size:10px;color:#999;">Just now</div>'
+    const imageSection = vid
+      ? '<video src="'+vid+'" controls muted playsinline style="width:100%;max-height:min(320px,45vh);object-fit:contain;border-radius:8px;margin-bottom:10px;background:#000;"></video>'
+      : img
+      ? '<img src="'+img+'" alt="" style="width:100%;max-height:min(240px,40vh);object-fit:contain;border-radius:8px;margin-bottom:10px;">'
+      : '<div style="width:100%;height:160px;background:#f3f4f6;border-radius:8px;margin-bottom:10px;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:6px;">'
+        +'<span style="font-size:28px;">'+plat.icon+'</span>'
+        +'<span style="font-size:10px;color:#aaa;">Attach media from Creative+</span>'
+        +'</div>';
+
+    return '<div style="background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,.15);">'
+      +'<div style="padding:8px 12px;border-bottom:1px solid #eee;display:flex;align-items:center;gap:6px;">'
+        +'<div style="font-size:14px;">'+plat.icon+'</div>'
+        +'<div style="font-size:11px;font-weight:700;color:#555;">'+plat.label+'</div>'
+      +'</div>'
+      +'<div style="padding:10px 12px;">'
+        +'<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">'
+          +avatarHtml
+          +'<div>'
+            +'<div style="font-size:12px;font-weight:700;color:#111;">'+rep+'</div>'
+            +'<div style="font-size:10px;color:#999;">Just now</div>'
+          +'</div>'
+        +'</div>'
+        +imageSection
+        +'<div style="font-size:12px;color:#111;line-height:1.6;white-space:pre-wrap;max-height:120px;overflow:hidden;">'+caption.substring(0,200)+(caption.length>200?'…':'')+'</div>'
+        +'<div style="margin-top:10px;padding-top:8px;border-top:1px solid #eee;display:flex;gap:14px;">'
+          +'<span style="font-size:11px;color:#888;">❤️ Like</span>'
+          +'<span style="font-size:11px;color:#888;">💬 Comment</span>'
+          +'<span style="font-size:11px;color:#888;">↗ Share</span>'
         +'</div>'
       +'</div>'
-      // Image
-      +imageSection
-      // Caption
-      +'<div style="font-size:12px;color:#111;line-height:1.6;white-space:pre-wrap;max-height:120px;overflow:hidden;">'+caption.substring(0,200)+(caption.length>200?'…':'')+'</div>'
-      // Engagement row
-      +'<div style="margin-top:10px;padding-top:8px;border-top:1px solid #eee;display:flex;gap:14px;">'
-        +'<span style="font-size:11px;color:#888;">❤️ Like</span>'
-        +'<span style="font-size:11px;color:#888;">💬 Comment</span>'
-        +'<span style="font-size:11px;color:#888;">↗ Share</span>'
-      +'</div>'
-    +'</div>'
-  +'</div>';
+    +'</div>';
+  });
+
+  return '<div style="display:flex;flex-direction:column;gap:12px;">'+cards.join('')+'</div>';
 }
 
 function csGetLivePreviewMedia(){
@@ -15205,7 +15297,6 @@ function ceLoadFile(evt){
       const canvas = document.getElementById('ce-canvas');
       if(canvas){ canvas.style.display='block'; document.getElementById('ce-empty-state').style.display='none'; }
       ceUpdateImageScaleSlider();
-      ceInitCanvas();
       ceRedraw();
       showToast('💡 Use "Fill" to remove black bars, or "Fit" to show full image');
     };
@@ -19689,21 +19780,23 @@ function bcpOpenVoiceover(){
   ov.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:9999;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(6px);padding:12px;";
 
   var vurl = (_ceState && _ceState.isVideo && _ceState.videoUrl) ? _ceState.videoUrl : '';
+  var videoDisplay = vurl ? 'block' : 'none';
+  var recDisabled = vurl ? '' : ' disabled';
   ov.innerHTML="<div style=\"background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:18px;width:560px;max-width:95vw;max-height:92vh;overflow:auto;\">"
     +"<div style=\"display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;gap:10px;\">"
     +"<div style=\"font-size:18px;font-weight:900;color:var(--text);\">🎙️ Voice-Over</div>"
     +"<button onclick=\"bcpVOClose()\" style=\"background:none;border:none;color:var(--text3);font-size:20px;cursor:pointer;\">x</button></div>"
     +"<div id=\"bcp-vo-status\" style=\"text-align:center;padding:14px;font-size:13px;color:var(--text3);margin-bottom:12px;background:var(--surface2);border-radius:12px;\">"+(vurl ? "Play the video and record your voice-over." : "Load a video first so you can record over it.")+"</div>"
     +"<div style=\"margin-bottom:12px;\">"
-      + (vurl ? "<video id=\"bcp-vo-video\" src=\""+vurl+"\" muted playsinline style=\"width:100%;max-height:240px;border-radius:12px;background:#000;display:block;object-fit:contain;\"></video>"
-              : "<label style=\"display:block;padding:12px;background:var(--surface2);border:1px dashed var(--border);border-radius:12px;text-align:center;color:var(--text2);cursor:pointer;font-size:13px;\">"
-                + "Load Video (MP4) for Voice-Over"
-                + "<input type=\"file\" accept=\"video/*\" style=\"display:none\" onchange=\"bcpVOSelectVideo(event)\">"
-                + "</label>")
+      +"<video id=\"bcp-vo-video\" src=\""+(vurl||'')+"\" muted playsinline style=\"width:100%;max-height:240px;border-radius:12px;background:#000;display:"+videoDisplay+";object-fit:contain;\"></video>"
+      +"<label style=\"margin-top:10px;display:block;padding:12px;background:var(--surface2);border:1px dashed var(--border);border-radius:12px;text-align:center;color:var(--text2);cursor:pointer;font-size:13px;\">"
+        +"Load Video (MP4) for Voice-Over"
+        +"<input type=\"file\" accept=\"video/*\" style=\"display:none\" onchange=\"bcpVOSelectVideo(event)\">"
+      +"</label>"
     +"</div>"
     +"<div id=\"bcp-vo-timer\" style=\"text-align:center;font-size:34px;font-weight:900;color:var(--text);margin-bottom:10px;display:none;\">0:00</div>"
     +"<div style=\"display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;\">"
-    +"<button id=\"bcp-vo-start\" onclick=\"bcpVOStart()\" style=\"padding:14px;background:linear-gradient(135deg,#ef4444,#dc2626);color:#fff;border:none;border-radius:10px;font-size:13px;font-weight:800;cursor:pointer;\">🔴 Record</button>"
+    +"<button id=\"bcp-vo-start\" onclick=\"bcpVOStart()\""+recDisabled+" style=\"padding:14px;background:linear-gradient(135deg,#ef4444,#dc2626);color:#fff;border:none;border-radius:10px;font-size:13px;font-weight:800;cursor:pointer;\">🔴 Record</button>"
     +"<button id=\"bcp-vo-stop\" onclick=\"bcpVOStop()\" style=\"padding:14px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;color:var(--text3);\" disabled>⏹ Stop</button></div>"
     +"<div id=\"bcp-vo-playback\" style=\"display:none;margin-bottom:12px;\">"
     +"<audio id=\"bcp-vo-audio\" controls style=\"width:100%;border-radius:8px;\"></audio></div>"
@@ -19719,19 +19812,48 @@ function bcpOpenVoiceover(){
 function bcpVOSelectVideo(evt){
   var file = evt.target.files && evt.target.files[0];
   if(!file){ return; }
-  // Use the same loader as Creative+ so canvas/video state is ready.
+  // Immediately show selected clip in the modal preview.
+  try{
+    var previewUrl = URL.createObjectURL(file);
+    var pv = document.getElementById('bcp-vo-video');
+    if(pv){
+      pv.src = previewUrl;
+      pv.style.display = 'block';
+      pv.muted = true;
+      pv.load();
+      pv.play().catch(function(){});
+    }
+  }catch(e2){}
+
+  // Use the same loader as Creative+ so export/trim/record can use the real player.
+  var startBtn = document.getElementById('bcp-vo-start');
+  if(startBtn) startBtn.disabled = true;
   try{
     ceLoadFile({target:{files:[file]}});
-    showToast("Video loaded for voice-over. Press Record when ready.");
-    setTimeout(function(){
-      if(_ceState && _ceState.videoUrl){
-        var v=document.getElementById('bcp-vo-video');
-        if(v){ v.src=_ceState.videoUrl; v.load(); }
-      }
-    }, 600);
   }catch(e){
     showToast("Could not load that video.");
+    return;
   }
+
+  showToast("Loading video for voice-over…");
+  // Enable Record only when Creative+ finishes video metadata loading.
+  var poll = setInterval(function(){
+    if(_ceState && _ceState.isVideo && _ceState.image){
+      clearInterval(poll);
+      var sb = document.getElementById('bcp-vo-start');
+      if(sb) sb.disabled = false;
+      showToast("Video ready for voice-over. Press Record.");
+      var st = document.getElementById("bcp-vo-status");
+      if(st) st.textContent = "Ready. Press Record to capture your voice-over.";
+    }
+  }, 250);
+  setTimeout(function(){
+    try{ clearInterval(poll); }catch(e){}
+    var sb = document.getElementById('bcp-vo-start');
+    if(sb && sb.disabled){
+      showToast("Still loading… try pressing Record again in a second.");
+    }
+  }, 4500);
 }
 
 function bcpVOStart(){
@@ -19739,6 +19861,8 @@ function bcpVOStart(){
     showToast("Load a video first so you can record over it.");
     return;
   }
+  var sb=document.getElementById("bcp-vo-start");
+  if(sb) sb.disabled=true;
   var v=_ceState.image;
   // Offset (seconds) from the start of the exported trim; used to place voice in export.
   var vt0=_ceState.videoTrimStart||0;
@@ -20349,7 +20473,44 @@ function bcpShowFullEditor(){
   var bottomBlock = cropOnly
     ? [
       "<div id=\"bcp-bottom-tools\" style=\"flex:0 0 auto;width:min(420px,38vw);min-width:240px;padding:10px 14px 14px;border-left:1px solid #252525;background:#121212;overflow:auto;\">",
-      "<div style=\"font-size:10px;color:#888;text-align:center;line-height:1.45;max-width:520px;margin:0 auto;\">Pick a <strong style=\"color:#ccc;\">Format</strong>, adjust fit, and trim. Then continue for text, music, captions &amp; scheduling.</div>",
+      "<div style=\"font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);margin-bottom:10px;\">Step 2 — Crop &amp; edit</div>",
+      "<div style=\"font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text3);margin-bottom:8px;\">Lighting</div>",
+      "<div style=\"font-size:10px;color:#aaa;display:flex;justify-content:space-between;gap:10px;margin-bottom:4px;\"><span>Brightness</span><span id=\"ce-brightness-val\">100</span></div>",
+      "<input type=\"range\" id=\"ce-brightness\" min=\"0\" max=\"200\" step=\"1\" value=\"100\" oninput=\"ceAdjust();var vEl=document.getElementById('ce-brightness-val');if(vEl)vEl.textContent=this.value;\" style=\"width:100%;accent-color:var(--accent);margin-bottom:10px;\">",
+      "<div style=\"font-size:10px;color:#aaa;display:flex;justify-content:space-between;gap:10px;margin-bottom:4px;\"><span>Contrast</span><span id=\"ce-contrast-val\">100</span></div>",
+      "<input type=\"range\" id=\"ce-contrast\" min=\"0\" max=\"200\" step=\"1\" value=\"100\" oninput=\"ceAdjust();var vEl=document.getElementById('ce-contrast-val');if(vEl)vEl.textContent=this.value;\" style=\"width:100%;accent-color:var(--accent);margin-bottom:10px;\">",
+      "<div style=\"font-size:10px;color:#aaa;display:flex;justify-content:space-between;gap:10px;margin-bottom:4px;\"><span>Saturation</span><span id=\"ce-saturation-val\">100</span></div>",
+      "<input type=\"range\" id=\"ce-saturation\" min=\"0\" max=\"200\" step=\"1\" value=\"100\" oninput=\"ceAdjust();var vEl=document.getElementById('ce-saturation-val');if(vEl)vEl.textContent=this.value;\" style=\"width:100%;accent-color:var(--accent);margin-bottom:10px;\">",
+      "<div style=\"font-size:10px;color:#aaa;display:flex;justify-content:space-between;gap:10px;margin-bottom:4px;\"><span>Warmth</span><span id=\"ce-warmth-val\">0</span></div>",
+      "<input type=\"range\" id=\"ce-warmth\" min=\"-50\" max=\"50\" step=\"0.1\" value=\"0\" oninput=\"ceAdjust();var vEl=document.getElementById('ce-warmth-val');if(vEl)vEl.textContent=this.value;\" style=\"width:100%;accent-color:var(--accent);margin-bottom:10px;\">",
+      "<div style=\"font-size:10px;color:#aaa;display:flex;justify-content:space-between;gap:10px;margin-bottom:4px;\"><span>Blur</span><span id=\"ce-blur-val\">0</span></div>",
+      "<input type=\"range\" id=\"ce-blur\" min=\"0\" max=\"10\" step=\"0.1\" value=\"0\" oninput=\"ceAdjust();var vEl=document.getElementById('ce-blur-val');if(vEl)vEl.textContent=this.value;\" style=\"width:100%;accent-color:var(--accent);margin-bottom:14px;\">",
+      "<div style=\"font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text3);margin-bottom:8px;\">Caption + font (on the video)</div>",
+      "<input id=\"ce-text-input\" placeholder=\"Type text…\" style=\"width:100%;padding:10px 10px;border-radius:10px;background:#0f0f0f;border:1px solid #2a2a2a;color:#e5e7eb;outline:none;margin-bottom:10px;\" />",
+      "<div style=\"display:flex;gap:8px;margin-bottom:10px;\">",
+      "<select id=\"ce-text-font\" style=\"flex:1;padding:10px 8px;border-radius:10px;background:#0f0f0f;border:1px solid #2a2a2a;color:#e5e7eb;outline:none;font-size:12px;\">",
+      "<option value=\"Inter\" selected>Inter</option>",
+      "<option value=\"Syne\">Syne</option>",
+      "<option value=\"Arial\">Arial</option>",
+      "<option value=\"Impact\">Impact</option>",
+      "<option value=\"Georgia\">Georgia</option>",
+      "<option value=\"Courier New\">Courier New</option>",
+      "</select>",
+      "<input id=\"ce-text-size\" type=\"number\" value=\"48\" min=\"10\" max=\"240\" style=\"width:96px;padding:10px 8px;border-radius:10px;background:#0f0f0f;border:1px solid #2a2a2a;color:#e5e7eb;outline:none;font-size:12px;\" />",
+      "</div>",
+      "<div style=\"display:flex;gap:10px;align-items:center;margin-bottom:10px;\">",
+      "<input id=\"ce-text-color\" type=\"color\" value=\"#ffffff\" style=\"width:42px;height:34px;background:transparent;border:none;padding:0;\" />",
+      "<label style=\"font-size:11px;color:#aaa;display:flex;align-items:center;gap:6px;\">",
+      "<input id=\"ce-text-bold\" type=\"checkbox\" style=\"accent-color:var(--accent);\" />",
+      "Bold",
+      "</label>",
+      "<label style=\"font-size:11px;color:#aaa;display:flex;align-items:center;gap:6px;\">",
+      "<input id=\"ce-text-shadow\" type=\"checkbox\" checked style=\"accent-color:var(--accent);\" />",
+      "Shadow",
+      "</label>",
+      "</div>",
+      "<button type=\"button\" onclick=\"ceAddText()\" style=\"width:100%;padding:10px 12px;background:rgba(232,168,56,.14);border:1px solid rgba(232,168,56,.55);border-radius:10px;color:#e8a838;font-size:12px;font-weight:800;cursor:pointer;\">+ Add Text</button>",
+      "<div style=\"font-size:10px;color:#888;margin-top:10px;line-height:1.45;\">Now keep going with the editor for shapes, sounds, captions &amp; scheduling.</div>",
       "</div>"
     ].join("")
     : [
@@ -26961,87 +27122,37 @@ function djEmailConfirmation(jobId) {
 function bcpOpenPreviewSignoff(){
   var ex=document.getElementById("bcp-preview-modal");if(ex)ex.remove();
   var canvas=document.getElementById("ce-canvas");
-  var src=canvas?canvas.toDataURL("image/png"):"";
-  var cap=(document.getElementById("bcp-caption-text")&&document.getElementById("bcp-caption-text").value)||"";
+  var previewSrc=canvas?canvas.toDataURL("image/png"):"";
   var ov=document.createElement("div");ov.id="bcp-preview-modal";
-  ov.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:9999;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(12px)";
-  var modal=document.createElement("div");
-  modal.style.cssText="background:#111;border-radius:20px;max-width:520px;width:90%;max-height:90vh;overflow-y:auto;border:1px solid #222;box-shadow:0 32px 80px rgba(0,0,0,.8)";
-  var hdr=document.createElement("div");hdr.style.cssText="padding:20px 24px;border-bottom:1px solid #222;display:flex;justify-content:space-between;align-items:center";
-  var ttl=document.createElement("div");
-  var t1=document.createElement("div");t1.style.cssText="font-size:18px;font-weight:900;color:#fff";t1.textContent="Preview & Sign Off";
-  var t2=document.createElement("div");t2.style.cssText="font-size:11px;color:#666";t2.textContent="Review before posting to social media";
-  ttl.appendChild(t1);ttl.appendChild(t2);
-  var xb=document.createElement("button");xb.textContent="x";xb.style.cssText="width:32px;height:32px;border-radius:50%;background:#222;border:none;color:#aaa;font-size:18px;cursor:pointer";xb.onclick=function(){ov.remove();};
-  hdr.appendChild(ttl);hdr.appendChild(xb);modal.appendChild(hdr);
-  if(src){var pv=document.createElement("div");pv.style.cssText="padding:20px;text-align:center;background:#0a0a0a;border-bottom:1px solid #222";var im=new Image();im.src=src;im.style.cssText="max-width:100%;max-height:300px;border-radius:12px;object-fit:contain";pv.appendChild(im);modal.appendChild(pv);}
-  var cw=document.createElement("div");cw.style.cssText="padding:16px 20px;border-bottom:1px solid #222";
-  var cl=document.createElement("div");cl.style.cssText="font-size:10px;font-weight:700;text-transform:uppercase;color:#555";cl.textContent="Caption";
-  var ta=document.createElement("textarea");ta.rows=3;ta.value=cap;ta.placeholder="Add your caption...";ta.style.cssText="width:100%;background:#1a1a1a;border:1px solid #333;border-radius:9px;padding:10px;color:#fff;font-size:12px;outline:none;resize:none;box-sizing:border-box";
-  cw.appendChild(cl);cw.appendChild(ta);modal.appendChild(cw);
-  var pw=document.createElement("div");pw.style.cssText="padding:16px 20px;border-bottom:1px solid #222";
-  var pl=document.createElement("div");pl.style.cssText="font-size:10px;font-weight:700;text-transform:uppercase;color:#555";pl.textContent="Post to Platform";
-  var pg=document.createElement("div");pg.style.cssText="display:flex;flex-wrap:wrap;gap:8px";
-  [["Instagram","https://www.instagram.com","#e1306c"],["TikTok","https://www.tiktok.com/upload","#333"],["Facebook","https://www.facebook.com","#1877f2"],["Twitter/X","https://twitter.com/compose/tweet","#14171a"]].forEach(function(p){var b=document.createElement("button");b.textContent=p[0];b.style.cssText="padding:10px 16px;border-radius:9px;font-size:12px;font-weight:700;cursor:pointer;border:1px solid "+p[2]+";background:"+p[2]+"22;color:#fff";b.onclick=(function(u){return function(){window.open(u);};})(p[1]);pg.appendChild(b);});
-  pw.appendChild(pl);pw.appendChild(pg);modal.appendChild(pw);
-  var aw=document.createElement("div");aw.style.cssText="padding:16px 20px;display:flex;gap:10px";
-  var ab=document.createElement("button");ab.textContent="Approve & Export";ab.style.cssText="flex:1;padding:13px;background:linear-gradient(135deg,#059669,#047857);color:#fff;border:none;border-radius:10px;font-size:13px;font-weight:800;cursor:pointer";
-  ab.onclick=function(){if(typeof ceExportImage==="function")ceExportImage();ov.remove();if(typeof showToast==="function")showToast("Approved!");};
-  var kb=document.createElement("button");kb.textContent="Keep Editing";kb.style.cssText="flex:1;padding:13px;background:#1a1a1a;border:1px solid #333;color:#aaa;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer";kb.onclick=function(){ov.remove();};
-  aw.appendChild(ab);aw.appendChild(kb);modal.appendChild(aw);
-  ov.appendChild(modal);document.body.appendChild(ov);
+  ov.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:9999;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(12px);";
+  var urls={instagram:"https://www.instagram.com",tiktok:"https://www.tiktok.com/upload",facebook:"https://www.facebook.com",twitter:"https://twitter.com/compose/tweet"};
+  var platNames=["Instagram","TikTok","Facebook","Twitter/X"];
+  var platColors=["#e1306c","#333","#1877f2","#14171a"];
+  var btns=platNames.map(function(n,i){var id=["instagram","tiktok","facebook","twitter"][i];return '<button onclick="window.open(''+urls[id]+'')" style="padding:10px 16px;border-radius:9px;font-size:12px;font-weight:700;cursor:pointer;border:1px solid '+platColors[i]+';background:'+platColors[i]+'22;color:#fff;">'+n+'</button>';}).join("");
+  var cap=(document.getElementById("bcp-caption-text")&&document.getElementById("bcp-caption-text").value)||"";
+  ov.innerHTML='<div style="background:#111;border-radius:20px;max-width:520px;width:90%;max-height:90vh;overflow-y:auto;border:1px solid #222;box-shadow:0 32px 80px rgba(0,0,0,.8);">'
+    +'<div style="padding:20px 24px;border-bottom:1px solid #222;display:flex;justify-content:space-between;align-items:center;">'
+    +'<div><div style="font-size:18px;font-weight:900;color:#fff;">Preview &amp; Sign Off</div><div style="font-size:11px;color:#666;margin-top:2px;">Review before posting to social media</div></div>'
+    +'<button onclick="document.getElementById('bcp-preview-modal').remove()" style="width:32px;height:32px;border-radius:50%;background:#222;border:none;color:#aaa;font-size:18px;cursor:pointer;line-height:1;">&#xD7;</button>'
+    +'</div>'
+    +(previewSrc?'<div style="padding:20px;text-align:center;background:#0a0a0a;border-bottom:1px solid #222;"><img src="'+previewSrc+'" style="max-width:100%;max-height:300px;border-radius:12px;object-fit:contain;"/></div>':'<div style="padding:32px;text-align:center;color:#555;font-size:13px;">Load an image or video first to see preview</div>')
+    +'<div style="padding:16px 20px;border-bottom:1px solid #222;"><div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#555;margin-bottom:8px;">Caption</div>'
+    +'<textarea rows="3" style="width:100%;background:#1a1a1a;border:1px solid #333;border-radius:9px;padding:10px;color:#fff;font-size:12px;outline:none;resize:none;box-sizing:border-box;" placeholder="Add your caption...">'+cap+'</textarea></div>'
+    +'<div style="padding:16px 20px;border-bottom:1px solid #222;"><div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#555;margin-bottom:10px;">Post to Platform</div>'
+    +'<div style="display:flex;flex-wrap:wrap;gap:8px;">'+btns+'</div></div>'
+    +'<div style="padding:16px 20px;display:flex;gap:10px;">'
+    +'<button onclick="typeof ceExportImage==='function'?ceExportImage():null;document.getElementById('bcp-preview-modal').remove();typeof showToast==='function'&&showToast('Approved! Content exported.')" style="flex:1;padding:13px;background:linear-gradient(135deg,#059669,#047857);color:#fff;border:none;border-radius:10px;font-size:13px;font-weight:800;cursor:pointer;">Approve &amp; Export</button>'
+    +'<button onclick="document.getElementById('bcp-preview-modal').remove()" style="flex:1;padding:13px;background:#1a1a1a;border:1px solid #333;color:#aaa;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;">Keep Editing</button>'
+    +'</div></div>';
+  document.body.appendChild(ov);
   ov.addEventListener("click",function(e){if(e.target===ov)ov.remove();});
 }
 function ceResetAdjust(){
   if(!window._ceState||!window._ceState.filter)return;
   _ceState.filter={brightness:100,contrast:100,saturation:100,warmth:0,blur:0};
   ["ce-brightness","ce-contrast","ce-saturation"].forEach(function(id){var el=document.getElementById(id);if(el)el.value=100;});
-  var wa=document.getElementById("ce-warmth");if(wa)wa.value=0;
-  var ba=document.getElementById("ce-blur");if(ba)ba.value=0;
-  if(typeof ceRedraw==="function")ceRedraw();
-  if(typeof showToast==="function")showToast("Adjustments reset");
-}
-</script>
-<script>
-function bcpOpenPreviewSignoff(){
-  var ex=document.getElementById("bcp-preview-modal");if(ex)ex.remove();
-  var canvas=document.getElementById("ce-canvas");
-  var src=canvas?canvas.toDataURL("image/png"):"";
-  var cap=(document.getElementById("bcp-caption-text")&&document.getElementById("bcp-caption-text").value)||"";
-  var ov=document.createElement("div");ov.id="bcp-preview-modal";
-  ov.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:9999;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(12px)";
-  var modal=document.createElement("div");modal.style.cssText="background:#111;border-radius:20px;max-width:520px;width:90%;max-height:90vh;overflow-y:auto;border:1px solid #222;box-shadow:0 32px 80px rgba(0,0,0,.8)";
-  var hdr=document.createElement("div");hdr.style.cssText="padding:20px 24px;border-bottom:1px solid #222;display:flex;justify-content:space-between;align-items:center";
-  var ttl=document.createElement("div");
-  var t1=document.createElement("div");t1.style.cssText="font-size:18px;font-weight:900;color:#fff";t1.textContent="Preview & Sign Off";
-  var t2=document.createElement("div");t2.style.cssText="font-size:11px;color:#666";t2.textContent="Review before posting to social media";
-  ttl.appendChild(t1);ttl.appendChild(t2);
-  var xb=document.createElement("button");xb.textContent="x";xb.style.cssText="width:32px;height:32px;border-radius:50%;background:#222;border:none;color:#aaa;font-size:18px;cursor:pointer";xb.onclick=function(){ov.remove();};
-  hdr.appendChild(ttl);hdr.appendChild(xb);modal.appendChild(hdr);
-  if(src){var pv=document.createElement("div");pv.style.cssText="padding:20px;text-align:center;background:#0a0a0a;border-bottom:1px solid #222";var im=new Image();im.src=src;im.style.cssText="max-width:100%;max-height:300px;border-radius:12px;object-fit:contain";pv.appendChild(im);modal.appendChild(pv);}
-  var cw=document.createElement("div");cw.style.cssText="padding:16px 20px;border-bottom:1px solid #222";
-  var cl=document.createElement("div");cl.style.cssText="font-size:10px;font-weight:700;text-transform:uppercase;color:#555";cl.textContent="Caption";
-  var ta=document.createElement("textarea");ta.rows=3;ta.value=cap;ta.placeholder="Add your caption...";ta.style.cssText="width:100%;background:#1a1a1a;border:1px solid #333;border-radius:9px;padding:10px;color:#fff;font-size:12px;outline:none;resize:none;box-sizing:border-box";
-  cw.appendChild(cl);cw.appendChild(ta);modal.appendChild(cw);
-  var pw=document.createElement("div");pw.style.cssText="padding:16px 20px;border-bottom:1px solid #222";
-  var pl=document.createElement("div");pl.style.cssText="font-size:10px;font-weight:700;text-transform:uppercase;color:#555";pl.textContent="Post to Platform";
-  var pg=document.createElement("div");pg.style.cssText="display:flex;flex-wrap:wrap;gap:8px";
-  [["Instagram","https://www.instagram.com","#e1306c"],["TikTok","https://www.tiktok.com/upload","#333"],["Facebook","https://www.facebook.com","#1877f2"],["Twitter/X","https://twitter.com/compose/tweet","#14171a"]].forEach(function(p){var b=document.createElement("button");b.textContent=p[0];b.style.cssText="padding:10px 16px;border-radius:9px;font-size:12px;font-weight:700;cursor:pointer;border:1px solid "+p[2]+";background:"+p[2]+"22;color:#fff";b.onclick=(function(u){return function(){window.open(u);};})(p[1]);pg.appendChild(b);});
-  pw.appendChild(pl);pw.appendChild(pg);modal.appendChild(pw);
-  var aw=document.createElement("div");aw.style.cssText="padding:16px 20px;display:flex;gap:10px";
-  var ab=document.createElement("button");ab.textContent="Approve & Export";ab.style.cssText="flex:1;padding:13px;background:linear-gradient(135deg,#059669,#047857);color:#fff;border:none;border-radius:10px;font-size:13px;font-weight:800;cursor:pointer";
-  ab.onclick=function(){if(typeof ceExportImage==="function")ceExportImage();ov.remove();if(typeof showToast==="function")showToast("Approved!");};
-  var kb=document.createElement("button");kb.textContent="Keep Editing";kb.style.cssText="flex:1;padding:13px;background:#1a1a1a;border:1px solid #333;color:#aaa;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer";kb.onclick=function(){ov.remove();};
-  aw.appendChild(ab);aw.appendChild(kb);modal.appendChild(aw);
-  ov.appendChild(modal);document.body.appendChild(ov);
-  ov.addEventListener("click",function(e){if(e.target===ov)ov.remove();});
-}
-function ceResetAdjust(){
-  if(!window._ceState||!window._ceState.filter)return;
-  _ceState.filter={brightness:100,contrast:100,saturation:100,warmth:0,blur:0};
-  ["ce-brightness","ce-contrast","ce-saturation"].forEach(function(id){var el=document.getElementById(id);if(el)el.value=100;});
-  var wa=document.getElementById("ce-warmth");if(wa)wa.value=0;
-  var ba=document.getElementById("ce-blur");if(ba)ba.value=0;
+  var w=document.getElementById("ce-warmth");if(w)w.value=0;
+  var b=document.getElementById("ce-blur");if(b)b.value=0;
   if(typeof ceRedraw==="function")ceRedraw();
   if(typeof showToast==="function")showToast("Adjustments reset");
 }
