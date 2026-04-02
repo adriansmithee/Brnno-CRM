@@ -5763,12 +5763,16 @@ function showForgot(){showLoginForm();}
 // ════════════════════════════════════
 function renderAll(){
   saveData();
-  renderStats();
-  renderLeads();
-  renderKanban();
-  renderHomePage();
-  // Also refresh whatever page is currently visible
+  // Guard: skip DOM-dependent renders on custom pages
   const cp = window._currentPage || '';
+  const _customPages = ['commission-calc','tab-visibility','detailer-jobs','opp-kanban'];
+  if(!_customPages.includes(cp)) {
+    renderStats();
+    renderLeads();
+    renderKanban();
+    renderHomePage();
+  }
+  // Also refresh whatever page is currently visible
   if(cp==='opportunities'||cp==='opp-kanban') renderOpportunities();
   else if(cp==='pipeline')         renderPipeline();
   else if(cp==='forecast')         renderForecastPage();
