@@ -4512,7 +4512,16 @@ function persistSession(next){
         expMs: expMs || undefined,
         // Keep `exp` as ms (Date.now() is ms), and provide a seconds value too.
         exp: expMs || undefined,
-        expSec: expMs ? Math.floor(expMs/1000) : undefined
+        expSec: expMs ? Math.floor(expMs/1000) : undefined,
+        // Additional aliases for different extension implementations.
+        expiresAt: expMs || undefined,
+        expiresAtSec: expMs ? Math.floor(expMs/1000) : undefined,
+        expTimestamp: expMs || undefined,
+        expTimestampSec: expMs ? Math.floor(expMs/1000) : undefined,
+        iat: Math.floor(now/1000),
+        iatMs: now,
+        issuedAt: now,
+        issuedAtSec: Math.floor(now/1000)
       };
       // Also expose as globals for extensions that read directly from the CRM page context.
       try{
@@ -5546,7 +5555,16 @@ function loginSuccess(u){
         expMs: expMs || undefined,
         // Keep `exp` as ms (Date.now() is ms), and provide a seconds value too.
         exp: expMs || undefined,
-        expSec: expMs ? Math.floor(expMs/1000) : undefined
+        expSec: expMs ? Math.floor(expMs/1000) : undefined,
+        // Additional aliases for different extension implementations.
+        expiresAt: expMs || undefined,
+        expiresAtSec: expMs ? Math.floor(expMs/1000) : undefined,
+        expTimestamp: expMs || undefined,
+        expTimestampSec: expMs ? Math.floor(expMs/1000) : undefined,
+        iat: Math.floor(Date.now()/1000),
+        iatMs: Date.now(),
+        issuedAt: Date.now(),
+        issuedAtSec: Math.floor(Date.now()/1000)
       };
       // Expose on the window as well (same reason as persistSession()).
       try{
