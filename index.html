@@ -4573,6 +4573,37 @@ async function refreshSupabaseSession(){
   return auth.access_token;
 }
 
+// Extension helper: returns a fresh access token for the current logged-in CRM user.
+// The Brnno Chrome extension uses this to avoid "session expired" when it reads a
+// stale token from localStorage.
+window.__BRNNO_GET_FRESH_SESSION = async function(){
+  try{
+    const s = getSessionObj();
+    if(!s || !s.access_token) return null;
+    const expMs = jwtExpMs(s.access_token);
+    // Refresh if token is missing exp or will expire within ~2 minutes.
+    const shouldRefresh = !expMs || (expMs - Date.now()) < (2*60*1000);
+    if(shouldRefresh){
+      const newTok = await refreshSupabaseSession();
+      if(newTok){
+        const fresh = getSessionObj();
+        return {
+          access_token: fresh?.access_token || newTok,
+          email: fresh?.user?.email || fresh?.username || '',
+          refresh_token: fresh?.refresh_token || undefined
+        };
+      }
+    }
+    return {
+      access_token: s.access_token,
+      email: s.user?.email || s.username || '',
+      refresh_token: s.refresh_token || undefined
+    };
+  }catch(e){
+    return null;
+  }
+};
+
 function startAuthTokenAutoRefresh(){
   if(window._brnnoAuthRefreshTimer) return;
   window._brnnoAuthRefreshTimer = setInterval(async function(){
