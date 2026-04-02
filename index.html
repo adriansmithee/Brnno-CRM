@@ -5788,6 +5788,7 @@ function renderAll(){
 }
 
 function renderStats(){
+  if(!document.getElementById('stats-row')) return; // guard: stats-row not in DOM on custom pages
   const visLeads=currentIsAdmin?leads:leads.filter(l=>l.rep===currentRep);
   const t=visLeads.length,w=visLeads.filter(l=>l.status==='closed-won').length,
         d=visLeads.filter(l=>l.status==='demo-set').length,
@@ -27498,6 +27499,31 @@ window.applyTabVis=function(){
   _ALL_TABS.forEach(t=>{const el=document.getElementById('nav-'+t.key);if(el)el.style.display=vis.includes(t.key)?'':'none';});
   const h=document.getElementById('nav-home');if(h)h.style.display='';
 };
+
+// ── HOOK setPage FOR CUSTOM PAGES ──
+// Must run after DOMContentLoaded so the original setPage exists
+document.addEventListener('DOMContentLoaded', function() {
+  const _origSP = window.setPage;
+  if (!_origSP || window._brnnoCustPageHooked) return;
+  window._brnnoCustPageHooked = true;
+  window.setPage = function(page, el) {
+    if (page === 'commission-calc' || page === 'tab-visibility' || page === 'detailer-jobs') {
+      // Handle nav active state
+      document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+      if (el) el.classList.add('active');
+      window._currentPage = page;
+      try { localStorage.setItem('brnno_lastpage_' + (currentRepEmail||'guest'), page); } catch(e) {}
+      if (page === 'commission-calc' && typeof renderCommissionCalc === 'function') {
+        renderCommissionCalc();
+        setTimeout(() => { if(typeof calcAE==='function')calcAE(); if(typeof calcSDR==='function')calcSDR(); }, 50);
+      }
+      if (page === 'tab-visibility' && typeof renderTabVisibilityPage === 'function') renderTabVisibilityPage();
+      if (page === 'detailer-jobs' && typeof renderDetailerJobsPage === 'function') renderDetailerJobsPage();
+      return;
+    }
+    _origSP(page, el);
+  };
+});
 
 // ── ROLE DETECTION (runs after login data is available) ──
 (function initRoleAndTabs(){
