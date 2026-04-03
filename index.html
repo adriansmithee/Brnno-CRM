@@ -27350,20 +27350,45 @@ const _ROLE_PRESETS={
 function _loadTabVis(role){try{const s=localStorage.getItem('brnno_tab_vis_'+role);if(s)return JSON.parse(s);}catch(e){}return _ROLE_PRESETS[role]||_ALL_TABS.map(t=>t.key);}
 function _saveTabVis(role,tabs){localStorage.setItem('brnno_tab_vis_'+role,JSON.stringify(tabs));}
 
-// ── COMMISSION CALCULATOR (Enhanced) ──
+// ── COMMISSION CALCULATOR — Revenue-based MRR tiers (replaces credit system) ──
 window._commTab = 'ae';
 window._commMonth = new Date().getMonth();
 window._commYear = new Date().getFullYear();
+if(!Array.isArray(window._scDealAmounts)||!window._scDealAmounts.length) window._scDealAmounts = [100];
+
+function commDealMrr(d){
+  const mo = parseFloat(d.dcMonthly||d.dealValue||0)||0;
+  return mo;
+}
+function commClassifyMrr(mo){
+  if(mo>=80) return 'Full';
+  if(mo>=20) return 'Micro';
+  return 'Free';
+}
+function commTierFromMrr(mrr){
+  const m = Math.max(0,mrr);
+  if(m>=1680) return {tier:3,pct:0.25,bonus:1000,name:'Elite',short:'Tier 3 Elite',label:'Tier 3 Elite — 25% + $1,000'};
+  if(m>=880) return {tier:2,pct:0.20,bonus:500,name:'Growth',short:'Tier 2 Growth',label:'Tier 2 Growth — 20% + $500'};
+  return {tier:1,pct:0.15,bonus:0,name:'Base',short:'Tier 1 Base',label:'Tier 1 Base — $0–$879 → 15%'};
+}
+function commNextTierProgress(mrr){
+  if(mrr>=1680) return {text:'You are at the top Elite tier.',need:0};
+  if(mrr>=880) return {text:`$${Math.max(0,1680-mrr).toFixed(0)} more New MRR to Tier 3 Elite ($1,680+).`,need:1680-mrr};
+  return {text:`$${Math.max(0,880-mrr).toFixed(0)} more New MRR to Tier 2 Growth ($880+).`,need:880-mrr};
+}
+function commSdrAlignBonus(aeTier){
+  if(aeTier>=3) return 500;
+  if(aeTier>=2) return 250;
+  return 0;
+}
 
 window.renderCommissionCalc = function(){
   const c = document.getElementById('content'); if(!c) return;
   const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-  const now = new Date();
   const selMonth = window._commMonth;
   const selYear = window._commYear;
   const tab = window._commTab || 'ae';
 
-  // Get closed-won deals from CRM filtered by rep and month
   function getWonDeals(repFilter, month, year) {
     if(typeof leads === 'undefined') return [];
     return leads.filter(l => {
@@ -27383,20 +27408,13 @@ window.renderCommissionCalc = function(){
       return new Date(l.wonDate).getFullYear() === year;
     });
   }
-  function dealToCredit(d) {
-    const mo = parseFloat(d.dcMonthly||d.dealValue||0);
-    if(mo >= 80) return {credits:1.0, mo};
-    if(mo >= 20) return {credits:0.5, mo};
-    return {credits:0, mo};
-  }
 
-  // Month selector
   const monthOpts = months.map((m,i) => `<option value="${i}" ${i===selMonth?'selected':''}>${m}</option>`).join('');
   const yearOpts = [selYear-1, selYear, selYear+1].map(y => `<option value="${y}" ${y===selYear?'selected':''}>${y}</option>`).join('');
 
   c.innerHTML = `<div id="comm-page">
 <div class="comm-title">💰 Commission Calculator</div>
-<div class="comm-subtitle">Real-time earnings based on your closed deals + manual scenario calculator</div>
+<div class="comm-subtitle">Revenue-based tiers: New MRR sets your residual % and bonuses — plus scenario modeling</div>
 
 <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;flex-wrap:wrap;">
   <div class="comm-tabs" style="margin-bottom:0">
@@ -27414,217 +27432,227 @@ window.renderCommissionCalc = function(){
 <div id="comm-content"></div>
 </div>`;
 
-  // Render tab content
-  if(tab === 'ae') renderAEView(selMonth, selYear, months, getWonDeals, getWonDealsYear, dealToCredit);
-  else if(tab === 'sdr') renderSDRView(selMonth, selYear, months, getWonDeals, getWonDealsYear, dealToCredit);
+  if(tab === 'ae') renderAEView(selMonth, selYear, months, getWonDeals, getWonDealsYear);
+  else if(tab === 'sdr') renderSDRView(selMonth, selYear, months, getWonDeals);
   else renderScenarioCalc();
 };
 
-function renderAEView(selMonth, selYear, months, getWonDeals, getWonDealsYear, dealToCredit) {
+function renderAEView(selMonth, selYear, months, getWonDeals, getWonDealsYear) {
   const cc = document.getElementById('comm-content'); if(!cc) return;
   const myRep = typeof currentRep !== 'undefined' ? currentRep : '';
   const wonMonth = getWonDeals(currentIsAdmin ? null : myRep, selMonth, selYear);
-  const wonYear = getWonDealsYear(currentIsAdmin ? null : myRep, selYear);
 
-  // Calculate monthly credits and revenue
-  let monthCredits = 0, monthRevenue = 0;
+  let monthRevenue = 0;
   const dealRows = wonMonth.map(d => {
-    const {credits, mo} = dealToCredit(d);
-    monthCredits += credits;
+    const mo = commDealMrr(d);
     monthRevenue += mo;
-    const creditBadge = credits === 1.0 ? '<span class="comm-tier-badge comm-tier-3">1.0</span>' :
-                        credits === 0.5 ? '<span class="comm-tier-badge comm-tier-2">0.5</span>' :
-                        '<span style="color:var(--text2);font-size:11px">0.0</span>';
-    return `<tr><td style="font-weight:600">${d.biz||'—'}</td><td>${d.rep||'—'}</td><td>$${mo.toFixed(0)}/mo</td><td>${creditBadge}</td><td>${d.wonDate||'—'}</td></tr>`;
+    const cls = commClassifyMrr(mo);
+    const badge = cls==='Full' ? '<span class="comm-tier-badge comm-tier-3">Full</span>' :
+                  cls==='Micro' ? '<span class="comm-tier-badge comm-tier-2">Micro</span>' :
+                  '<span style="color:var(--text2);font-size:11px">Free</span>';
+    return `<tr><td style="font-weight:600">${d.biz||'—'}</td><td>${d.rep||'—'}</td><td>$${mo.toFixed(0)}</td><td>${badge}</td><td>${d.wonDate||'—'}</td></tr>`;
   }).join('') || '<tr><td colspan="5" style="text-align:center;color:var(--text2);padding:16px">No closed-won deals this month</td></tr>';
 
-  // Tier
-  let tier=1, pct=0.15, bonus=0;
-  if(monthCredits>=21){tier=3;pct=0.25;bonus=1000;}
-  else if(monthCredits>=11){tier=2;pct=0.20;bonus=500;}
-  else if(monthCredits>=10){tier=1;pct=0.15;bonus=250;}
-  const tc = ['comm-tier-1','comm-tier-2','comm-tier-3'][tier-1];
-  const tl = ['Tier 1 — 15%','Tier 2 — 20%','Tier 3 — 25%'][tier-1];
-  const residual = monthRevenue * pct;
+  const T = commTierFromMrr(monthRevenue);
+  const tc = ['comm-tier-1','comm-tier-2','comm-tier-3'][T.tier-1];
+  const residual = monthRevenue * T.pct;
+  const prog = commNextTierProgress(monthRevenue);
 
-  // Year summary by month
   const monthlyData = Array.from({length:12}, (_,m) => {
     const mDeals = getWonDeals(currentIsAdmin ? null : myRep, m, selYear);
-    let mc=0, mr=0;
-    mDeals.forEach(d => { const {credits,mo}=dealToCredit(d); mc+=credits; mr+=mo; });
-    let mp=0.15, mb=0;
-    if(mc>=21){mp=0.25;mb=1000;}else if(mc>=11){mp=0.20;mb=500;}else if(mc>=10){mp=0.15;mb=250;}
-    return {month:months[m].substring(0,3), credits:mc, revenue:mr, residual:mr*mp, bonus:mb, total:mr*mp+mb};
+    let mr = 0;
+    mDeals.forEach(d => { mr += commDealMrr(d); });
+    const t = commTierFromMrr(mr);
+    const res = mr * t.pct;
+    const tot = res + t.bonus;
+    return {month:months[m].substring(0,3), deals:mDeals.length, revenue:mr, pct:t.pct, residual:res, bonus:t.bonus, total:tot};
   });
-  const yearTotal = monthlyData.reduce((a,m) => a+m.total, 0);
-  const yearResidual = monthlyData.reduce((a,m) => a+m.residual, 0);
-  const yearBonus = monthlyData.reduce((a,m) => a+m.bonus, 0);
+  const yearTotal = monthlyData.reduce((a,x) => a+x.total, 0);
+  const yearBonus = monthlyData.reduce((a,x) => a+x.bonus, 0);
 
   cc.innerHTML = `
   <div class="comm-grid">
     <div class="comm-card">
       <div class="comm-card-title">📊 ${months[selMonth]} ${selYear} — Closed Deals</div>
       <table class="comm-breakdown-table">
-        <thead><tr><th>Business</th><th>Rep</th><th>Revenue</th><th>Credits</th><th>Won Date</th></tr></thead>
+        <thead><tr><th>Business</th><th>Rep</th><th>New MRR</th><th>Type</th><th>Won Date</th></tr></thead>
         <tbody>${dealRows}</tbody>
       </table>
-      <div style="margin-top:12px;display:flex;gap:12px;">
-        <div style="flex:1;background:var(--surface2);border-radius:8px;padding:12px;text-align:center">
-          <div style="font-size:11px;color:var(--text2);font-weight:700;text-transform:uppercase;letter-spacing:.05em">Total Revenue</div>
-          <div style="font-size:22px;font-weight:900;color:var(--accent)">$${monthRevenue.toFixed(0)}/mo</div>
+      <div style="margin-top:12px;display:flex;gap:12px;flex-wrap:wrap;">
+        <div style="flex:1;min-width:140px;background:var(--surface2);border-radius:8px;padding:12px;text-align:center">
+          <div style="font-size:11px;color:var(--text2);font-weight:700;text-transform:uppercase;letter-spacing:.05em">Deals</div>
+          <div style="font-size:22px;font-weight:900;color:var(--accent)">${wonMonth.length}</div>
         </div>
-        <div style="flex:1;background:var(--surface2);border-radius:8px;padding:12px;text-align:center">
-          <div style="font-size:11px;color:var(--text2);font-weight:700;text-transform:uppercase;letter-spacing:.05em">Total Credits</div>
-          <div style="font-size:22px;font-weight:900;color:var(--accent)">${monthCredits.toFixed(1)}</div>
+        <div style="flex:1;min-width:140px;background:var(--surface2);border-radius:8px;padding:12px;text-align:center">
+          <div style="font-size:11px;color:var(--text2);font-weight:700;text-transform:uppercase;letter-spacing:.05em">New MRR</div>
+          <div style="font-size:22px;font-weight:900;color:var(--accent)">$${monthRevenue.toFixed(0)}</div>
         </div>
       </div>
     </div>
     <div class="comm-card">
       <div class="comm-card-title">🎯 ${months[selMonth]} Earnings</div>
-      <div style="margin-bottom:12px"><span class="comm-tier-badge ${tc}">${tl}</span></div>
+      <div style="margin-bottom:10px"><span class="comm-tier-badge ${tc}">${T.label}</span></div>
+      <div style="font-size:12px;color:var(--text2);margin-bottom:10px;line-height:1.5">${prog.text}</div>
       <div class="comm-result-box" style="margin-bottom:12px">
-        <div class="comm-result-label">Residuals Added This Month</div>
-        <div class="comm-result-total">$${residual.toFixed(0)}/mo</div>
-        <div class="comm-result-breakdown">$${monthRevenue.toFixed(0)} revenue × ${Math.round(pct*100)}% = $${residual.toFixed(0)}/mo added to lifetime residuals</div>
+        <div class="comm-result-label">Residuals (this month)</div>
+        <div class="comm-result-total">$${residual.toFixed(0)}</div>
+        <div class="comm-result-breakdown">$${monthRevenue.toFixed(0)} New MRR × ${Math.round(T.pct*100)}% tier rate</div>
       </div>
       <div class="comm-passive">
-        <div><div class="comm-passive-label">Triple Crown Bonus</div><div class="comm-passive-val">${bonus>0?'$'+bonus.toLocaleString():'—'}</div></div>
-        <div style="text-align:right"><div class="comm-passive-label">Annual from residuals</div><div class="comm-passive-val">$${Math.round(residual*12).toLocaleString()}/yr</div></div>
+        <div><div class="comm-passive-label">Tier Bonus</div><div class="comm-passive-val">${T.bonus>0?'$'+T.bonus.toLocaleString():'—'}</div></div>
+        <div style="text-align:right"><div class="comm-passive-label">Annualized residual</div><div class="comm-passive-val">$${Math.round(residual*12).toLocaleString()}/yr</div></div>
       </div>
     </div>
   </div>
 
   <div class="comm-card">
-    <div class="comm-card-title">📈 ${selYear} Full Year Breakdown</div>
+    <div class="comm-card-title">📈 ${selYear} — Month by month</div>
     <table class="comm-breakdown-table">
-      <thead><tr><th>Month</th><th>Credits</th><th>Revenue/mo</th><th>Residuals</th><th>Bonus</th><th>Total Earned</th></tr></thead>
+      <thead><tr><th>Month</th><th>Deals</th><th>New MRR</th><th>Tier %</th><th>Residuals</th><th>Bonus</th><th>Total</th></tr></thead>
       <tbody>
         ${monthlyData.map((m,i) => `<tr ${i===selMonth?'class="comm-active-row"':''}>
           <td>${m.month}</td>
-          <td>${m.credits.toFixed(1)}</td>
+          <td>${m.deals}</td>
           <td>$${m.revenue.toFixed(0)}</td>
-          <td class="comm-highlight">$${m.residual.toFixed(0)}/mo</td>
+          <td>${Math.round(m.pct*100)}%</td>
+          <td class="comm-highlight">$${m.residual.toFixed(0)}</td>
           <td>${m.bonus>0?'$'+m.bonus.toLocaleString():'—'}</td>
           <td style="font-weight:700">$${m.total.toFixed(0)}</td>
         </tr>`).join('')}
         <tr style="border-top:2px solid var(--border);font-weight:800">
-          <td>YEAR TOTAL</td><td>—</td><td>—</td>
-          <td class="comm-highlight">$${yearResidual.toFixed(0)}/mo avg</td>
+          <td>YEAR</td><td>—</td><td>—</td><td>—</td><td>—</td>
           <td>$${yearBonus.toLocaleString()}</td>
           <td style="font-size:16px;color:var(--green)">$${yearTotal.toFixed(0)}</td>
         </tr>
       </tbody>
     </table>
-    <div class="comm-passive" style="margin-top:12px">
-      <div><div class="comm-passive-label">Total ${selYear} Earnings</div><div class="comm-passive-val">$${Math.round(yearTotal).toLocaleString()}</div></div>
-      <div style="text-align:right"><div class="comm-passive-label">If residuals held all year</div><div class="comm-passive-val">$${Math.round(yearResidual*12).toLocaleString()}/yr</div></div>
-    </div>
   </div>`;
 }
 
-function renderSDRView(selMonth, selYear, months, getWonDeals, getWonDealsYear, dealToCredit) {
+function renderSDRView(selMonth, selYear, months, getWonDeals) {
   const cc = document.getElementById('comm-content'); if(!cc) return;
-  const myRep = typeof currentRep !== 'undefined' ? currentRep : '';
-  // SDR input fields - preserve state
   const shows = window._sdrShows || 0;
-  const creds = window._sdrCreds || 0;
+  const companyMonth = getWonDeals(null, selMonth, selYear);
+  let companyMrr = 0;
+  companyMonth.forEach(d => { companyMrr += commDealMrr(d); });
+  const aeT = commTierFromMrr(companyMrr);
+  const align = commSdrAlignBonus(aeT.tier);
   let pay, tl, tc;
-  if(shows>=21){pay=45;tl='Tier 3 — $45/show';tc='comm-tier-3';}
-  else if(shows>=11){pay=35;tl='Tier 2 — $35/show';tc='comm-tier-2';}
-  else{pay=25;tl='Tier 1 — $25/show';tc='comm-tier-1';}
-  const showPay=shows*pay;
-  let vol=0;if(creds>=21)vol=500;else if(creds>=16)vol=250;else if(creds>=10)vol=125;
-  const total=showPay+vol;
-
-  // Year projection
-  const monthlySDR = Array.from({length:12},(_,m)=>({month:months[m].substring(0,3),shows:0,credits:0,pay:0}));
+  if(shows>=21){pay=45;tl='Show Tier 3 — $45/show';tc='comm-tier-3';}
+  else if(shows>=11){pay=35;tl='Show Tier 2 — $35/show';tc='comm-tier-2';}
+  else{pay=25;tl='Show Tier 1 — $25/show';tc='comm-tier-1';}
+  const showPay = shows*pay;
+  const total = showPay + align;
 
   cc.innerHTML = `
   <div class="comm-grid">
     <div class="comm-card">
-      <div class="comm-card-title">📊 ${months[selMonth]} ${selYear} — Enter Your Numbers</div>
-      <div class="comm-input-row"><label>Qualified show-ups</label><input class="comm-input" type="number" id="sdr-shows" value="${shows}" min="0" oninput="window._sdrShows=parseInt(this.value)||0;renderSDRView(window._commMonth,window._commYear,['January','February','March','April','May','June','July','August','September','October','November','December'],function(r,m,y){return typeof leads!=='undefined'?leads.filter(l=>l.status==='closed-won'&&(!r||l.rep===r)&&l.wonDate&&new Date(l.wonDate).getMonth()===m&&new Date(l.wonDate).getFullYear()===y):[]},function(r,y){return typeof leads!=='undefined'?leads.filter(l=>l.status==='closed-won'&&(!r||l.rep===r)&&l.wonDate&&new Date(l.wonDate).getFullYear()===y):[]},function(d){const mo=parseFloat(d.dcMonthly||d.dealValue||0);return mo>=80?{credits:1.0,mo}:mo>=20?{credits:0.5,mo}:{credits:0,mo}})"></div>
-      <div class="comm-input-row"><label>Closing credits (from AE)</label><input class="comm-input" type="number" id="sdr-creds" value="${creds}" min="0" oninput="window._sdrCreds=parseInt(this.value)||0;renderCommissionCalc()"></div>
+      <div class="comm-card-title">📊 ${months[selMonth]} ${selYear}</div>
+      <div class="comm-input-row"><label>Qualified show-ups</label><input class="comm-input" type="number" id="sdr-shows" value="${shows}" min="0" onfocus="this.select()" oninput="window._sdrShows=parseInt(this.value)||0;renderCommissionCalc()"></div>
       <hr class="comm-divider">
-      <div style="font-size:11px;color:var(--text2);line-height:1.8"><strong>Show-Up Rules:</strong><br>• Decision-maker must attend full demo<br>• Must be a qualified business owner<br>• Resets 1st of every month</div>
+      <div style="font-size:11px;color:var(--text2);line-height:1.8"><strong>Company New MRR (closed-won, all reps):</strong> $${companyMrr.toFixed(0)} → <span class="comm-tier-badge comm-tier-${aeT.tier}">${aeT.short}</span></div>
+      <div style="font-size:11px;color:var(--text2);margin-top:8px;line-height:1.8"><strong>AE alignment bonus:</strong> Tier 2 = $250 · Tier 3 = $500 (from company MRR tiers)</div>
+      <hr class="comm-divider">
+      <div style="font-size:11px;color:var(--text2);line-height:1.8"><strong>Show-up rules:</strong><br>• Decision-maker attends full demo<br>• Qualified business owner<br>• Resets 1st of each month</div>
     </div>
     <div class="comm-card">
       <div class="comm-card-title">🎯 ${months[selMonth]} Earnings</div>
       <div style="margin-bottom:10px"><span class="comm-tier-badge ${tc}">${tl}</span></div>
       <table class="comm-breakdown-table" style="margin-bottom:12px">
-        <thead><tr><th>Tier</th><th>Shows</th><th>Per Show</th><th>Volume Bonus</th></tr></thead>
+        <thead><tr><th>Show tier</th><th>Shows</th><th>Per show</th></tr></thead>
         <tbody>
-          <tr ${shows<11?'class="comm-active-row"':''}><td>Tier 1</td><td>1–10</td><td>$25</td><td>$125 @ 10 credits</td></tr>
-          <tr ${shows>=11&&shows<21?'class="comm-active-row"':''}><td>Tier 2</td><td>11–20</td><td>$35</td><td>$250 @ 16 credits</td></tr>
-          <tr ${shows>=21?'class="comm-active-row"':''}><td>Tier 3</td><td>21+</td><td>$45</td><td>$500 @ 21+ credits</td></tr>
+          <tr ${shows<11?'class="comm-active-row"':''}><td>1</td><td>1–10</td><td>$25</td></tr>
+          <tr ${shows>=11&&shows<21?'class="comm-active-row"':''}><td>2</td><td>11–20</td><td>$35</td></tr>
+          <tr ${shows>=21?'class="comm-active-row"':''}><td>3</td><td>21+</td><td>$45</td></tr>
         </tbody>
       </table>
       <div class="comm-result-box sdr">
-        <div class="comm-result-label">Total Monthly Earnings</div>
+        <div class="comm-result-label">Total (show pay + AE alignment)</div>
         <div class="comm-result-total">$${total.toLocaleString()}</div>
-        <div class="comm-result-breakdown">Show pay: $${showPay.toLocaleString()} + Volume bonus: $${vol.toLocaleString()}${vol>0?' 🏆':''}</div>
+        <div class="comm-result-breakdown">Shows: $${showPay.toLocaleString()} + Alignment: $${align.toLocaleString()} (${aeT.tier>=2?'🏆':'company MRR in Tier 1'})</div>
       </div>
     </div>
   </div>
   <div class="comm-card">
-    <div class="comm-card-title">📈 SDR Performance Examples</div>
+    <div class="comm-card-title">📈 Examples</div>
     <table class="comm-breakdown-table">
-      <thead><tr><th>Scenario</th><th>Shows</th><th>Credits</th><th>Show Pay</th><th>Volume Bonus</th><th>Total</th></tr></thead>
+      <thead><tr><th>Scenario</th><th>Shows</th><th>Co. MRR tier</th><th>Show $</th><th>Align</th><th>Total</th></tr></thead>
       <tbody>
-        <tr><td>Tier 1</td><td>8</td><td>6</td><td>$200</td><td>—</td><td>$200</td></tr>
-        <tr><td>Tier 2</td><td>16</td><td>12</td><td>$560</td><td>$125</td><td class="comm-highlight">$685</td></tr>
-        <tr><td>Tier 2 + Crown</td><td>16</td><td>16</td><td>$560</td><td>$250</td><td class="comm-highlight">$810</td></tr>
-        <tr><td>Tier 3 + Crown</td><td>25</td><td>22</td><td>$1,125</td><td>$500</td><td class="comm-highlight">$1,625</td></tr>
+        <tr><td>Early</td><td>8</td><td>Tier 1</td><td>$200</td><td>$0</td><td>$200</td></tr>
+        <tr><td>Growth co</td><td>14</td><td>Tier 2</td><td>$490</td><td>$250</td><td class="comm-highlight">$740</td></tr>
+        <tr><td>Elite co</td><td>22</td><td>Tier 3</td><td>$990</td><td>$500</td><td class="comm-highlight">$1,490</td></tr>
       </tbody>
     </table>
   </div>`;
 }
 
+window.scAddDealRow = function(){
+  if(!Array.isArray(window._scDealAmounts)) window._scDealAmounts = [];
+  window._scDealAmounts.push(50);
+  renderScenarioCalc();
+};
+window.scRemoveDealRow = function(i){
+  if(!Array.isArray(window._scDealAmounts)||window._scDealAmounts.length<2) return;
+  window._scDealAmounts.splice(i,1);
+  renderScenarioCalc();
+};
+window.scSetDealAmt = function(i,v){
+  if(!Array.isArray(window._scDealAmounts)) window._scDealAmounts = [];
+  window._scDealAmounts[i] = v;
+};
+
 function renderScenarioCalc() {
   const cc = document.getElementById('comm-content'); if(!cc) return;
-  const full = window._scFull || 0;
-  const micro = window._scMicro || 0;
-  const avg = window._scAvg || 120;
-  const credits = full*1.0 + micro*0.5;
-  let tier=1, pct=0.15, bonus=0;
-  if(credits>=21){tier=3;pct=0.25;bonus=1000;}
-  else if(credits>=11){tier=2;pct=0.20;bonus=500;}
-  else if(credits>=10){tier=1;pct=0.15;bonus=250;}
-  const res = ((full*avg)+(micro*avg*0.5))*pct;
-  const tc = ['comm-tier-1','comm-tier-2','comm-tier-3'][tier-1];
-  const tl = ['Tier 1 — 15% Residual','Tier 2 — 20% Residual','Tier 3 — 25% Residual'][tier-1];
+  let amounts = Array.isArray(window._scDealAmounts)&&window._scDealAmounts.length ? window._scDealAmounts.map(x=>parseFloat(x)||0) : [0];
+  window._scDealAmounts = amounts;
+  const totalMrr = amounts.reduce((a,b)=>a+b,0);
+  const T = commTierFromMrr(totalMrr);
+  const residual = totalMrr * T.pct;
+  const prog = commNextTierProgress(totalMrr);
+  const tc = ['comm-tier-1','comm-tier-2','comm-tier-3'][T.tier-1];
+
+  const dealRows = amounts.map((amt,i)=>{
+    const cls = commClassifyMrr(amt);
+    const lab = cls==='Full'?'Full':cls==='Micro'?'Micro':'Free';
+    return `<div class="comm-deal-row" style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+      <span style="font-size:11px;color:var(--text2);min-width:22px;">${i+1}.</span>
+      <input class="comm-input" style="flex:1;max-width:200px;" type="number" min="0" step="1" value="${amt}" onfocus="this.select()" oninput="scSetDealAmt(${i},parseFloat(this.value)||0);renderScenarioCalc();" />
+      <span class="comm-tier-badge ${cls==='Full'?'comm-tier-3':cls==='Micro'?'comm-tier-2':''}" style="${cls==='Free'?'opacity:.7':''}">${lab}</span>
+      ${amounts.length>1?`<button type="button" onclick="scRemoveDealRow(${i})" style="padding:4px 8px;font-size:11px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);cursor:pointer;color:var(--text2)">✕</button>`:''}
+    </div>`;
+  }).join('');
 
   cc.innerHTML = `
   <div class="comm-grid">
     <div class="comm-card">
-      <div class="comm-card-title">🧮 AE Scenario — What If?</div>
-      <div class="comm-input-row"><label>Full Deals ($80+/mo)</label><input class="comm-input" type="number" id="sc-full" value="${full}" min="0" oninput="window._scFull=parseInt(this.value)||0;renderScenarioCalc()"></div>
-      <div class="comm-input-row"><label>Micro-Deals ($20–$79/mo)</label><input class="comm-input" type="number" id="sc-micro" value="${micro}" min="0" oninput="window._scMicro=parseInt(this.value)||0;renderScenarioCalc()"></div>
-      <div class="comm-input-row"><label>Revenue per deal ($/mo)</label><input class="comm-input" type="number" id="sc-avg" value="${avg}" min="20" oninput="window._scAvg=parseFloat(this.value)||120;renderScenarioCalc()"></div>
-      <hr class="comm-divider">
-      <div style="font-size:11px;color:var(--text2);line-height:1.8"><strong>Credits:</strong> ${credits.toFixed(1)} → <span class="comm-tier-badge ${tc}">${tl}</span></div>
+      <div class="comm-card-title">🧮 Scenario — Revenue per deal</div>
+      <div style="font-size:11px;color:var(--text2);margin-bottom:12px;line-height:1.6">Enter actual <strong>New MRR</strong> per deal (any amount). ≥$80 Full · $20–$79 Micro · &lt;$20 Free</div>
+      ${dealRows}
+      <button type="button" onclick="scAddDealRow()" style="margin-top:8px;padding:8px 14px;border-radius:8px;border:1px dashed var(--gold);background:rgba(212,160,23,.06);color:var(--gold2);font-size:12px;font-weight:700;cursor:pointer;width:100%;">+ Add Deal</button>
     </div>
     <div class="comm-card">
-      <div class="comm-card-title">📊 Projected Earnings</div>
+      <div class="comm-card-title">Running total</div>
+      <div style="margin-bottom:10px"><span class="comm-tier-badge ${tc}">${T.label}</span></div>
+      <div style="font-size:12px;color:var(--text2);margin-bottom:12px;line-height:1.5"><strong>New MRR:</strong> $${totalMrr.toFixed(0)}<br>${prog.text}</div>
       <div class="comm-result-box" style="margin-bottom:12px">
-        <div class="comm-result-label">Monthly Residuals Added</div>
-        <div class="comm-result-total">$${Math.round(res).toLocaleString()}/mo</div>
-        <div class="comm-result-breakdown">${credits.toFixed(1)} credits · ${Math.round(pct*100)}% residual · ${bonus>0?'🏆 $'+bonus.toLocaleString()+' Triple Crown bonus':Math.ceil(10-credits)+' more credits to first bonus'}</div>
+        <div class="comm-result-label">Monthly residual (at tier rate)</div>
+        <div class="comm-result-total">$${Math.round(residual).toLocaleString()}</div>
+        <div class="comm-result-breakdown">${Math.round(T.pct*100)}% × $${totalMrr.toFixed(0)} New MRR</div>
       </div>
       <div class="comm-passive">
-        <div><div class="comm-passive-label">Triple Crown Bonus</div><div class="comm-passive-val">${bonus>0?'$'+bonus.toLocaleString():'—'}</div></div>
-        <div style="text-align:right"><div class="comm-passive-label">Annual Passive Income</div><div class="comm-passive-val">$${Math.round(res*12).toLocaleString()}/yr</div></div>
+        <div><div class="comm-passive-label">Tier bonus</div><div class="comm-passive-val">${T.bonus>0?'$'+T.bonus.toLocaleString():'—'}</div></div>
+        <div style="text-align:right"><div class="comm-passive-label">Annualized residual</div><div class="comm-passive-val">$${Math.round(residual*12).toLocaleString()}/yr</div></div>
       </div>
     </div>
   </div>
   <div class="comm-card">
-    <div class="comm-card-title">📈 Tier Comparison</div>
+    <div class="comm-card-title">📈 Tier comparison (your $${totalMrr.toFixed(0)} New MRR)</div>
     <table class="comm-breakdown-table">
-      <thead><tr><th>Tier</th><th>Credits Needed</th><th>Residual %</th><th>At $${avg}/deal: ${full+micro} deals</th><th>Bonus</th><th>Annual Impact</th></tr></thead>
+      <thead><tr><th>Tier</th><th>MRR range</th><th>Residual</th><th>Bonus</th><th>At your MRR</th></tr></thead>
       <tbody>
-        <tr ${tier===1?'class="comm-active-row"':''}><td>Tier 1</td><td>10</td><td>15%</td><td>$${Math.round((full+micro)*avg*0.15)}/mo</td><td>$250</td><td>$${Math.round((full+micro)*avg*0.15*12)}/yr</td></tr>
-        <tr ${tier===2?'class="comm-active-row"':''}><td>Tier 2</td><td>11–20</td><td>20%</td><td>$${Math.round((full+micro)*avg*0.20)}/mo</td><td>$500</td><td>$${Math.round((full+micro)*avg*0.20*12)}/yr</td></tr>
-        <tr ${tier===3?'class="comm-active-row"':''}><td>Tier 3</td><td>21+</td><td>25%</td><td>$${Math.round((full+micro)*avg*0.25)}/mo</td><td>$1,000</td><td>$${Math.round((full+micro)*avg*0.25*12)}/yr</td></tr>
+        <tr ${T.tier===1?'class="comm-active-row"':''}><td>Tier 1 Base</td><td>$0 – $879</td><td>15%</td><td>—</td><td>$${Math.round(totalMrr*0.15)}/mo</td></tr>
+        <tr ${T.tier===2?'class="comm-active-row"':''}><td>Tier 2 Growth</td><td>$880 – $1,679</td><td>20%</td><td>$500</td><td>$${Math.round(totalMrr*0.20)}/mo + bonus</td></tr>
+        <tr ${T.tier===3?'class="comm-active-row"':''}><td>Tier 3 Elite</td><td>$1,680+</td><td>25%</td><td>$1,000</td><td>$${Math.round(totalMrr*0.25)}/mo + bonus</td></tr>
       </tbody>
     </table>
   </div>`;
@@ -27632,6 +27660,7 @@ function renderScenarioCalc() {
 
 window.calcAE = function(){ if(window._commTab==='calc') renderScenarioCalc(); else renderCommissionCalc(); };
 window.calcSDR = function(){ renderCommissionCalc(); };
+window._patched = Object.assign({}, window._patched||{}, { commissionRevenueModel: true, commissionTiers: '879-1679-1680' });
 
 
 
