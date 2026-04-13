@@ -27331,430 +27331,350 @@ function ceResetAdjust(){
 
 
 <script id="brnno-features-js">
-/* ══ BRNNO FEATURES: Commission Calc + Tab Visibility + Roles ══ */
-const _ALL_TABS=[
-  {key:'home',label:'🏠 Home'},{key:'leads',label:'👥 All Leads'},{key:'opportunities',label:'💎 Opportunities'},
-  {key:'tasks',label:'✅ My Tasks'},{key:'clients',label:'🏆 Clients'},{key:'detailer-jobs',label:'🔧 Detailer Jobs'},
-  {key:'accounts',label:'🏢 Accounts'},{key:'calendar',label:'📆 Calendar'},{key:'playbooks',label:'📖 Playbooks'},
-  {key:'sequences',label:'⚡ Sequences'},{key:'deal-calc',label:'🧮 Deal Calculator'},
-  {key:'commission-calc',label:'💰 Commission Calc'},{key:'content-studio',label:'🎬 Content Studio'},
-  {key:'kpi',label:'📈 KPI Dashboard'},{key:'reports',label:'📊 Reports'},{key:'pipeline',label:'🔀 Pipeline'},
-  {key:'forecast',label:'🔮 Forecast'},{key:'activity',label:'⚡ Activity Feed'},
-  {key:'demo-report',label:'📅 Demo Schedule'},{key:'tab-visibility',label:'👁️ Tab Visibility'},
-];
-const _ROLE_PRESETS={
-  sdr:['home','leads','tasks','calendar','activity','commission-calc','content-studio'],
-  ae:['home','leads','opportunities','tasks','clients','pipeline','forecast','deal-calc','commission-calc','calendar','activity','demo-report'],
-  admin:_ALL_TABS.map(t=>t.key)
+/* ══ BRNNO FEATURES v4: Commission Calc (Credit-Based Comp Plan) ══ */
+
+/* COMP PLAN:
+   Credits: $70+/mo=1.0cr | $20-$49.99/mo=0.5cr | <$20=0cr
+   AE Tiers: 0-10cr=15% | 11-20cr=20% | 21+cr=25%
+   AE Bonuses: 10cr=$250 | 16cr=$500 | 21+cr=$1,000
+   SDR: 1-10 shows=$25ea | 11-20=$35ea | 21+=$45ea
+   SDR Volume (by AE credits): 10cr=$125 | 16cr=$250 | 21+cr=$500 */
+
+function dealCredit(mo){const v=parseFloat(mo)||0;if(v>=70)return{credits:1.0,type:'Full',color:'var(--green)'};if(v>=20)return{credits:0.5,type:'Micro',color:'#b8860b'};return{credits:0,type:'Free',color:'var(--text2)'};}
+function aeTierInfo(cr){if(cr>=21)return{tier:3,pct:.25,label:'Tier 3 — 25%',tc:'comm-tier-3'};if(cr>=11)return{tier:2,pct:.20,label:'Tier 2 — 20%',tc:'comm-tier-2'};return{tier:1,pct:.15,label:'Tier 1 — 15%',tc:'comm-tier-1'};}
+function aeBonus(cr){if(cr>=21)return 1000;if(cr>=16)return 500;if(cr>=10)return 250;return 0;}
+function sdrTierInfo(sh){if(sh>=21)return{pay:45,label:'Tier 3 — $45/show',tc:'comm-tier-3'};if(sh>=11)return{pay:35,label:'Tier 2 — $35/show',tc:'comm-tier-2'};return{pay:25,label:'Tier 1 — $25/show',tc:'comm-tier-1'};}
+function sdrBonus(aeCr){if(aeCr>=21)return 500;if(aeCr>=16)return 250;if(aeCr>=10)return 125;return 0;}
+function fmt(n){return Math.round(n).toLocaleString();}
+
+// Persistent state — never reset on input changes
+window._cs = window._cs || {
+  tab:'calc', month:new Date().getMonth(), year:new Date().getFullYear(),
+  deals:[], sdrShows:'', sdrCr:''
 };
-function _loadTabVis(role){try{const s=localStorage.getItem('brnno_tab_vis_'+role);if(s)return JSON.parse(s);}catch(e){}return _ROLE_PRESETS[role]||_ALL_TABS.map(t=>t.key);}
-function _saveTabVis(role,tabs){localStorage.setItem('brnno_tab_vis_'+role,JSON.stringify(tabs));}
 
-// ── COMMISSION CALCULATOR — Revenue-based MRR tiers (replaces credit system) ──
-window._commTab = 'ae';
-window._commMonth = new Date().getMonth();
-window._commYear = new Date().getFullYear();
-if(!Array.isArray(window._scDealAmounts)||!window._scDealAmounts.length) window._scDealAmounts = [100];
-
-function commDealMrr(d){
-  const mo = parseFloat(d.dcMonthly||d.dealValue||0)||0;
-  return mo;
-}
-function commClassifyMrr(mo){
-  if(mo>=80) return 'Full';
-  if(mo>=20) return 'Micro';
-  return 'Free';
-}
-function commTierFromMrr(mrr){
-  const m = Math.max(0,mrr);
-  if(m>=1680) return {tier:3,pct:0.25,bonus:1000,name:'Elite',short:'Tier 3 Elite',label:'Tier 3 Elite — 25% + $1,000'};
-  if(m>=880) return {tier:2,pct:0.20,bonus:500,name:'Growth',short:'Tier 2 Growth',label:'Tier 2 Growth — 20% + $500'};
-  return {tier:1,pct:0.15,bonus:0,name:'Base',short:'Tier 1 Base',label:'Tier 1 Base — $0–$879 → 15%'};
-}
-function commNextTierProgress(mrr){
-  if(mrr>=1680) return {text:'You are at the top Elite tier.',need:0};
-  if(mrr>=880) return {text:`$${Math.max(0,1680-mrr).toFixed(0)} more New MRR to Tier 3 Elite ($1,680+).`,need:1680-mrr};
-  return {text:`$${Math.max(0,880-mrr).toFixed(0)} more New MRR to Tier 2 Growth ($880+).`,need:880-mrr};
-}
-function commSdrAlignBonus(aeTier){
-  if(aeTier>=3) return 500;
-  if(aeTier>=2) return 250;
-  return 0;
+// Calc (pure, no DOM)
+function calcDeals(deals){
+  let cr=0,mrr=0;
+  const rows=deals.map((v,i)=>{const mo=parseFloat(v)||0;const d=dealCredit(mo);cr+=d.credits;mrr+=mo;return{i,mo,...d};});
+  const t=aeTierInfo(cr);const b=aeBonus(cr);const res=mrr*t.pct;
+  const toNext=cr<10?(10-cr).toFixed(1):cr<16?(16-cr).toFixed(1):cr<21?(21-cr).toFixed(1):null;
+  return{rows,cr,mrr,res,bonus:b,toNext,...t};
 }
 
-window.renderCommissionCalc = function(){
-  const c = document.getElementById('content'); if(!c) return;
-  const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-  const selMonth = window._commMonth;
-  const selYear = window._commYear;
-  const tab = window._commTab || 'ae';
+// Update display only — never re-renders inputs
+function upd(id,html){const e=document.getElementById(id);if(e)e.innerHTML=html;}
+function updT(id,t){const e=document.getElementById(id);if(e)e.textContent=t;}
 
-  function getWonDeals(repFilter, month, year) {
-    if(typeof leads === 'undefined') return [];
-    return leads.filter(l => {
-      if(l.status !== 'closed-won') return false;
-      if(repFilter && l.rep !== repFilter) return false;
-      if(!l.wonDate) return false;
-      const d = new Date(l.wonDate);
-      return d.getMonth() === month && d.getFullYear() === year;
-    });
-  }
-  function getWonDealsYear(repFilter, year) {
-    if(typeof leads === 'undefined') return [];
-    return leads.filter(l => {
-      if(l.status !== 'closed-won') return false;
-      if(repFilter && l.rep !== repFilter) return false;
-      if(!l.wonDate) return false;
-      return new Date(l.wonDate).getFullYear() === year;
-    });
-  }
+function refreshCalcDisplay(){
+  const s=calcDeals(window._cs.deals);
+  upd('ae-tier-badge',`<span class="comm-tier-badge ${s.tc}">${s.label}</span>`);
+  updT('ae-cr-val',s.cr.toFixed(1));updT('ae-mrr-val','$'+fmt(s.mrr)+'/mo');
+  [1,2,3].forEach(t=>{const r=document.getElementById('ae-tr'+t);if(r)r.className=t===s.tier?'comm-active-row':'';});
+  updT('ae-bonus-val',s.bonus>0?'$'+s.bonus.toLocaleString():'—');
+  updT('ae-res-val','$'+fmt(s.res)+'/mo');
+  updT('ae-yr-val','$'+fmt(s.res*12)+'/yr');
+  updT('ae-yr1-val','$'+fmt(s.res*12+s.bonus));
+  upd('ae-progress',s.toNext?`${s.cr.toFixed(1)}cr → <strong>${s.toNext} more</strong> to next milestone`:'🏆 Triple Crown!');
+  updT('ae-tot-cr',s.cr.toFixed(1)+'cr');updT('ae-tot-mrr','$'+fmt(s.mrr)+'/mo');
+  s.rows.forEach(r=>{
+    const te=document.getElementById('ae-type-'+r.i);if(te){te.textContent=r.mo>0?r.type:'—';te.style.color=r.mo>0?r.color:'var(--text2)';}
+    updT('ae-cr-'+r.i,r.mo>0?r.credits.toFixed(1)+'cr':'—');
+    updT('ae-mrr-'+r.i,r.mo>0?'$'+fmt(r.mo)+'/mo':'—');
+  });
+}
 
-  const monthOpts = months.map((m,i) => `<option value="${i}" ${i===selMonth?'selected':''}>${m}</option>`).join('');
-  const yearOpts = [selYear-1, selYear, selYear+1].map(y => `<option value="${y}" ${y===selYear?'selected':''}>${y}</option>`).join('');
+function refreshSDRDisplay(){
+  const sh=parseInt(window._cs.sdrShows)||0;
+  const aeCr=parseFloat(window._cs.sdrCr)||0;
+  const t=sdrTierInfo(sh);const showPay=sh*t.pay;const vol=sdrBonus(aeCr);
+  upd('sdr-tier-badge',`<span class="comm-tier-badge ${t.tc}">${t.label}</span>`);
+  [1,2,3].forEach(n=>{const r=document.getElementById('sdr-tr'+n);if(r)r.className=(n===1&&sh<11)||(n===2&&sh>=11&&sh<21)||(n===3&&sh>=21)?'comm-active-row':'';});
+  updT('sdr-show-pay','$'+fmt(showPay));updT('sdr-vol','vol>0?'$'+vol.toLocaleString():'—');
+  updT('sdr-total','$'+fmt(showPay+vol));
+  upd('sdr-breakdown',`${sh} shows × $${t.pay} = $${fmt(showPay)}${vol>0?' + $'+vol+' volume bonus 🏆':''}`);
+}
 
-  c.innerHTML = `<div id="comm-page">
+// Input handlers — ONLY update state + refresh display, never re-render
+window.aeInput=function(i,v){window._cs.deals[i]=v;refreshCalcDisplay();};
+window.aeAdd=function(){window._cs.deals.push('');renderCommissionCalc();};
+window.aeRemove=function(i){window._cs.deals.splice(i,1);renderCommissionCalc();};
+window.sdrInput=function(f,v){window._cs[f]=v;refreshSDRDisplay();};
+
+// Main render — only called on tab switch / add-remove / page load
+window.renderCommissionCalc=function(){
+  const c=document.getElementById('content');if(!c)return;
+  const st=window._cs;
+  const months=['January','February','March','April','May','June','July','August','September','October','November','December'];
+  const monthOpts=months.map((m,i)=>`<option value="${i}" ${i===st.month?'selected':''}>${m}</option>`).join('');
+  const yearOpts=[st.year-1,st.year,st.year+1].map(y=>`<option value="${y}" ${y===st.year?'selected':''}>${y}</option>`).join('');
+
+  c.innerHTML=`<div id="comm-page">
 <div class="comm-title">💰 Commission Calculator</div>
-<div class="comm-subtitle">Revenue-based tiers: New MRR sets your residual % and bonuses — plus scenario modeling</div>
-
-<div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;flex-wrap:wrap;">
+<div class="comm-subtitle">Credit-based comp plan · Add any deal at any revenue</div>
+<div style="display:flex;align-items:center;gap:10px;margin-bottom:20px;flex-wrap:wrap">
   <div class="comm-tabs" style="margin-bottom:0">
-    <button class="comm-tab ${tab==='ae'?'active':''}" onclick="window._commTab='ae';renderCommissionCalc()">🏆 AE</button>
-    <button class="comm-tab ${tab==='sdr'?'active':''}" onclick="window._commTab='sdr';renderCommissionCalc()">📞 SDR</button>
-    <button class="comm-tab ${tab==='calc'?'active':''}" onclick="window._commTab='calc';renderCommissionCalc()">🧮 Scenario Calc</button>
+    <button class="comm-tab ${st.tab==='ae'?'active':''}" onclick="window._cs.tab='ae';renderCommissionCalc()">🏆 AE (CRM Data)</button>
+    <button class="comm-tab ${st.tab==='sdr'?'active':''}" onclick="window._cs.tab='sdr';renderCommissionCalc()">📞 SDR</button>
+    <button class="comm-tab ${st.tab==='calc'?'active':''}" onclick="window._cs.tab='calc';renderCommissionCalc()">🧮 Scenario Calc</button>
   </div>
-  <div style="display:flex;align-items:center;gap:8px;margin-left:auto;">
-    <select onchange="window._commMonth=parseInt(this.value);renderCommissionCalc()" style="background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:6px 10px;font-size:12px;color:var(--text);outline:none;">${monthOpts}</select>
-    <select onchange="window._commYear=parseInt(this.value);renderCommissionCalc()" style="background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:6px 10px;font-size:12px;color:var(--text);outline:none;">${yearOpts}</select>
-    <button onclick="window._commMonth=new Date().getMonth();window._commYear=new Date().getFullYear();renderCommissionCalc()" style="padding:6px 12px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text2);font-size:11px;cursor:pointer;">This Month</button>
+  <div style="display:flex;align-items:center;gap:6px;margin-left:auto">
+    <select onchange="window._cs.month=parseInt(this.value);renderCommissionCalc()" style="background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:5px 8px;font-size:12px;color:var(--text);outline:none">${monthOpts}</select>
+    <select onchange="window._cs.year=parseInt(this.value);renderCommissionCalc()" style="background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:5px 8px;font-size:12px;color:var(--text);outline:none">${yearOpts}</select>
+    <button onclick="window._cs.month=new Date().getMonth();window._cs.year=new Date().getFullYear();renderCommissionCalc()" style="padding:5px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text2);font-size:11px;cursor:pointer">This Month</button>
   </div>
 </div>
-
 <div id="comm-content"></div>
 </div>`;
 
-  if(tab === 'ae') renderAEView(selMonth, selYear, months, getWonDeals, getWonDealsYear);
-  else if(tab === 'sdr') renderSDRView(selMonth, selYear, months, getWonDeals);
-  else renderScenarioCalc();
+  if(st.tab==='ae')_renderAETab();
+  else if(st.tab==='sdr')_renderSDRTab();
+  else _renderScenarioTab();
 };
 
-function renderAEView(selMonth, selYear, months, getWonDeals, getWonDealsYear) {
-  const cc = document.getElementById('comm-content'); if(!cc) return;
-  const myRep = typeof currentRep !== 'undefined' ? currentRep : '';
-  const wonMonth = getWonDeals(currentIsAdmin ? null : myRep, selMonth, selYear);
+function _dealInputRow(i,v,idPrefix){
+  const mo=parseFloat(v)||0;const d=dealCredit(mo);
+  return `<tr>
+    <td style="color:var(--text2);font-size:12px">#${i+1}</td>
+    <td><input type="number" min="0" step="1" value="${mo||''}" placeholder="e.g. 120"
+      oninput="${idPrefix}Input(${i},this.value)" onchange="${idPrefix}Input(${i},this.value)" onfocus="this.select()"
+      style="width:90px;background:var(--surface2);border:1px solid var(--border);border-radius:5px;padding:5px 8px;font-size:13px;color:var(--text);outline:none;font-family:inherit"></td>
+    <td id="${idPrefix}-type-${i}" style="font-size:12px;font-weight:600;color:${mo>0?d.color:'var(--text2)'}">${mo>0?d.type:'—'}</td>
+    <td id="${idPrefix}-cr-${i}" style="font-weight:600">${mo>0?d.credits.toFixed(1)+'cr':'—'}</td>
+    <td id="${idPrefix}-mrr-${i}">${mo>0?'$'+fmt(mo)+'/mo':'—'}</td>
+    <td><button onclick="${idPrefix}Remove(${i})" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:18px;line-height:1;padding:0 4px">×</button></td>
+  </tr>`;}
 
-  let monthRevenue = 0;
-  const dealRows = wonMonth.map(d => {
-    const mo = commDealMrr(d);
-    monthRevenue += mo;
-    const cls = commClassifyMrr(mo);
-    const badge = cls==='Full' ? '<span class="comm-tier-badge comm-tier-3">Full</span>' :
-                  cls==='Micro' ? '<span class="comm-tier-badge comm-tier-2">Micro</span>' :
-                  '<span style="color:var(--text2);font-size:11px">Free</span>';
-    return `<tr><td style="font-weight:600">${d.biz||'—'}</td><td>${d.rep||'—'}</td><td>$${mo.toFixed(0)}</td><td>${badge}</td><td>${d.wonDate||'—'}</td></tr>`;
-  }).join('') || '<tr><td colspan="5" style="text-align:center;color:var(--text2);padding:16px">No closed-won deals this month</td></tr>';
+function _dealTable(deals,idPrefix){
+  const s=calcDeals(deals);
+  const rows=deals.map((v,i)=>_dealInputRow(i,v,idPrefix)).join('');
+  return `<table class="comm-breakdown-table" style="margin-bottom:10px">
+    <thead><tr><th>#</th><th>Revenue/mo</th><th>Type</th><th>Credits</th><th>MRR</th><th></th></tr></thead>
+    <tbody>
+      ${rows||'<tr><td colspan="6" style="text-align:center;color:var(--text2);padding:14px">Click "+ Add Deal" to start</td></tr>'}
+      ${deals.length>0?`<tr style="border-top:2px solid var(--border);font-weight:800">
+        <td colspan="3" style="color:var(--text2)">TOTAL</td>
+        <td id="${idPrefix}-tot-cr">${s.cr.toFixed(1)}cr</td>
+        <td id="${idPrefix}-tot-mrr">$${fmt(s.mrr)}/mo</td><td></td>
+      </tr>`:''}
+    </tbody>
+  </table>
+  <button onclick="${idPrefix}Add()" style="width:100%;padding:8px;border:1px dashed var(--accent);border-radius:6px;background:transparent;color:var(--accent);font-size:13px;font-weight:600;cursor:pointer">+ Add Deal</button>`;}
 
-  const T = commTierFromMrr(monthRevenue);
-  const tc = ['comm-tier-1','comm-tier-2','comm-tier-3'][T.tier-1];
-  const residual = monthRevenue * T.pct;
-  const prog = commNextTierProgress(monthRevenue);
-
-  const monthlyData = Array.from({length:12}, (_,m) => {
-    const mDeals = getWonDeals(currentIsAdmin ? null : myRep, m, selYear);
-    let mr = 0;
-    mDeals.forEach(d => { mr += commDealMrr(d); });
-    const t = commTierFromMrr(mr);
-    const res = mr * t.pct;
-    const tot = res + t.bonus;
-    return {month:months[m].substring(0,3), deals:mDeals.length, revenue:mr, pct:t.pct, residual:res, bonus:t.bonus, total:tot};
-  });
-  const yearTotal = monthlyData.reduce((a,x) => a+x.total, 0);
-  const yearBonus = monthlyData.reduce((a,x) => a+x.bonus, 0);
-
-  cc.innerHTML = `
-  <div class="comm-grid">
-    <div class="comm-card">
-      <div class="comm-card-title">📊 ${months[selMonth]} ${selYear} — Closed Deals</div>
-      <table class="comm-breakdown-table">
-        <thead><tr><th>Business</th><th>Rep</th><th>New MRR</th><th>Type</th><th>Won Date</th></tr></thead>
-        <tbody>${dealRows}</tbody>
-      </table>
-      <div style="margin-top:12px;display:flex;gap:12px;flex-wrap:wrap;">
-        <div style="flex:1;min-width:140px;background:var(--surface2);border-radius:8px;padding:12px;text-align:center">
-          <div style="font-size:11px;color:var(--text2);font-weight:700;text-transform:uppercase;letter-spacing:.05em">Deals</div>
-          <div style="font-size:22px;font-weight:900;color:var(--accent)">${wonMonth.length}</div>
-        </div>
-        <div style="flex:1;min-width:140px;background:var(--surface2);border-radius:8px;padding:12px;text-align:center">
-          <div style="font-size:11px;color:var(--text2);font-weight:700;text-transform:uppercase;letter-spacing:.05em">New MRR</div>
-          <div style="font-size:22px;font-weight:900;color:var(--accent)">$${monthRevenue.toFixed(0)}</div>
-        </div>
-      </div>
+function _resultsCard(deals){
+  const s=calcDeals(deals);
+  return `<div class="comm-card">
+    <div class="comm-card-title">🎯 Earnings</div>
+    <div style="margin-bottom:12px">
+      <div id="ae-tier-badge"><span class="comm-tier-badge ${s.tc}">${s.label}</span></div>
+      <div style="font-size:12px;color:var(--text2);margin-top:6px">Credits: <strong id="ae-cr-val">${s.cr.toFixed(1)}</strong> · MRR: <strong id="ae-mrr-val">$${fmt(s.mrr)}/mo</strong></div>
     </div>
-    <div class="comm-card">
-      <div class="comm-card-title">🎯 ${months[selMonth]} Earnings</div>
-      <div style="margin-bottom:10px"><span class="comm-tier-badge ${tc}">${T.label}</span></div>
-      <div style="font-size:12px;color:var(--text2);margin-bottom:10px;line-height:1.5">${prog.text}</div>
-      <div class="comm-result-box" style="margin-bottom:12px">
-        <div class="comm-result-label">Residuals (this month)</div>
-        <div class="comm-result-total">$${residual.toFixed(0)}</div>
-        <div class="comm-result-breakdown">$${monthRevenue.toFixed(0)} New MRR × ${Math.round(T.pct*100)}% tier rate</div>
-      </div>
-      <div class="comm-passive">
-        <div><div class="comm-passive-label">Tier Bonus</div><div class="comm-passive-val">${T.bonus>0?'$'+T.bonus.toLocaleString():'—'}</div></div>
-        <div style="text-align:right"><div class="comm-passive-label">Annualized residual</div><div class="comm-passive-val">$${Math.round(residual*12).toLocaleString()}/yr</div></div>
-      </div>
-    </div>
-  </div>
-
-  <div class="comm-card">
-    <div class="comm-card-title">📈 ${selYear} — Month by month</div>
-    <table class="comm-breakdown-table">
-      <thead><tr><th>Month</th><th>Deals</th><th>New MRR</th><th>Tier %</th><th>Residuals</th><th>Bonus</th><th>Total</th></tr></thead>
+    <table class="comm-breakdown-table" style="margin-bottom:14px">
+      <thead><tr><th>Tier</th><th>Credits</th><th>Residual</th><th>Bonus</th></tr></thead>
       <tbody>
-        ${monthlyData.map((m,i) => `<tr ${i===selMonth?'class="comm-active-row"':''}>
-          <td>${m.month}</td>
-          <td>${m.deals}</td>
-          <td>$${m.revenue.toFixed(0)}</td>
-          <td>${Math.round(m.pct*100)}%</td>
-          <td class="comm-highlight">$${m.residual.toFixed(0)}</td>
-          <td>${m.bonus>0?'$'+m.bonus.toLocaleString():'—'}</td>
-          <td style="font-weight:700">$${m.total.toFixed(0)}</td>
-        </tr>`).join('')}
-        <tr style="border-top:2px solid var(--border);font-weight:800">
-          <td>YEAR</td><td>—</td><td>—</td><td>—</td><td>—</td>
-          <td>$${yearBonus.toLocaleString()}</td>
-          <td style="font-size:16px;color:var(--green)">$${yearTotal.toFixed(0)}</td>
-        </tr>
+        <tr id="ae-tr1" class="${s.tier===1?'comm-active-row':''}"><td>Tier 1</td><td>0–10</td><td>15%</td><td>$250 @ 10cr</td></tr>
+        <tr id="ae-tr2" class="${s.tier===2?'comm-active-row':''}"><td>Tier 2</td><td>11–20</td><td>20%</td><td>$500 @ 16cr</td></tr>
+        <tr id="ae-tr3" class="${s.tier===3?'comm-active-row':''}"><td>Tier 3</td><td>21+</td><td>25%</td><td>$1,000</td></tr>
       </tbody>
     </table>
-  </div>`;
-}
+    <div class="comm-result-box" style="margin-bottom:12px">
+      <div class="comm-result-label">Monthly Residuals Added</div>
+      <div class="comm-result-total" id="ae-res-val">$${fmt(s.res)}/mo</div>
+      <div class="comm-result-breakdown" id="ae-progress">${s.toNext?`${s.cr.toFixed(1)}cr → <strong>${s.toNext} more</strong> to next milestone`:'🏆 Triple Crown!'}</div>
+    </div>
+    <div class="comm-passive">
+      <div><div class="comm-passive-label">Triple Crown Bonus</div><div class="comm-passive-val" id="ae-bonus-val">${s.bonus>0?'$'+s.bonus.toLocaleString():'—'}</div></div>
+      <div style="text-align:right"><div class="comm-passive-label">Annual Passive Income</div><div class="comm-passive-val" id="ae-yr-val">$${fmt(s.res*12)}/yr</div></div>
+    </div>
+    <div style="margin-top:10px;padding:10px 14px;background:var(--surface2);border-radius:8px;font-size:12px">
+      Year 1 total: <span style="color:var(--green);font-weight:800;font-size:15px" id="ae-yr1-val">$${fmt(s.res*12+s.bonus)}</span>
+    </div>
+  </div>`;}
 
-function renderSDRView(selMonth, selYear, months, getWonDeals) {
-  const cc = document.getElementById('comm-content'); if(!cc) return;
-  const shows = window._sdrShows || 0;
-  const companyMonth = getWonDeals(null, selMonth, selYear);
-  let companyMrr = 0;
-  companyMonth.forEach(d => { companyMrr += commDealMrr(d); });
-  const aeT = commTierFromMrr(companyMrr);
-  const align = commSdrAlignBonus(aeT.tier);
-  let pay, tl, tc;
-  if(shows>=21){pay=45;tl='Show Tier 3 — $45/show';tc='comm-tier-3';}
-  else if(shows>=11){pay=35;tl='Show Tier 2 — $35/show';tc='comm-tier-2';}
-  else{pay=25;tl='Show Tier 1 — $25/show';tc='comm-tier-1';}
-  const showPay = shows*pay;
-  const total = showPay + align;
+function _renderAETab(){
+  const cc=document.getElementById('comm-content');if(!cc)return;
+  const st=window._cs;
+  const months=['January','February','March','April','May','June','July','August','September','October','November','December'];
+  const myRep=typeof currentRep!=='undefined'?currentRep:'';
+  const monthlyData=Array.from({length:12},(_,m)=>{
+    if(typeof leads==='undefined')return{month:['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][m],deals:0,cr:0,mrr:0,res:0,bonus:0,total:0,tier:1};
+    const mDeals=leads.filter(l=>{if(l.status!=='closed-won')return false;if(!currentIsAdmin&&l.rep!==myRep)return false;if(!l.wonDate)return false;const d=new Date(l.wonDate);return d.getMonth()===m&&d.getFullYear()===st.year;});
+    let cr=0,mrr=0;mDeals.forEach(d=>{const mo=parseFloat(d.dcMonthly||d.dealValue||0);cr+=dealCredit(mo).credits;mrr+=mo;});
+    const t=aeTierInfo(cr);const b=aeBonus(cr);const res=mrr*t.pct;
+    return{month:['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][m],deals:mDeals.length,cr,mrr,res,bonus:b,total:res+b,tier:t.tier};
+  });
+  const selM=monthlyData[st.month];
+  const yRes=monthlyData.reduce((a,m)=>a+m.res,0);
+  const yBonus=monthlyData.reduce((a,m)=>a+m.bonus,0);
+  const yTotal=monthlyData.reduce((a,m)=>a+m.total,0);
+  const tierLabel=['Tier 1 — 15%','Tier 2 — 20%','Tier 3 — 25%'][selM.tier-1];
+  const tc=['comm-tier-1','comm-tier-2','comm-tier-3'][selM.tier-1];
 
-  cc.innerHTML = `
-  <div class="comm-grid">
+  cc.innerHTML=`<div class="comm-grid">
     <div class="comm-card">
-      <div class="comm-card-title">📊 ${months[selMonth]} ${selYear}</div>
-      <div class="comm-input-row"><label>Qualified show-ups</label><input class="comm-input" type="number" id="sdr-shows" value="${shows}" min="0" onfocus="this.select()" oninput="window._sdrShows=parseInt(this.value)||0;renderCommissionCalc()"></div>
-      <hr class="comm-divider">
-      <div style="font-size:11px;color:var(--text2);line-height:1.8"><strong>Company New MRR (closed-won, all reps):</strong> $${companyMrr.toFixed(0)} → <span class="comm-tier-badge comm-tier-${aeT.tier}">${aeT.short}</span></div>
-      <div style="font-size:11px;color:var(--text2);margin-top:8px;line-height:1.8"><strong>AE alignment bonus:</strong> Tier 2 = $250 · Tier 3 = $500 (from company MRR tiers)</div>
-      <hr class="comm-divider">
-      <div style="font-size:11px;color:var(--text2);line-height:1.8"><strong>Show-up rules:</strong><br>• Decision-maker attends full demo<br>• Qualified business owner<br>• Resets 1st of each month</div>
+      <div class="comm-card-title">📊 ${months[st.month]} ${st.year} — Closed Won Deals</div>
+      <div style="display:flex;gap:10px;margin-bottom:12px">
+        <div style="flex:1;background:var(--surface2);border-radius:8px;padding:10px;text-align:center">
+          <div style="font-size:11px;color:var(--text2);font-weight:700;text-transform:uppercase">Deals</div>
+          <div style="font-size:22px;font-weight:900;color:var(--accent)">${selM.deals}</div>
+        </div>
+        <div style="flex:1;background:var(--surface2);border-radius:8px;padding:10px;text-align:center">
+          <div style="font-size:11px;color:var(--text2);font-weight:700;text-transform:uppercase">Credits</div>
+          <div style="font-size:22px;font-weight:900;color:var(--accent)">${selM.cr.toFixed(1)}</div>
+        </div>
+        <div style="flex:1;background:var(--surface2);border-radius:8px;padding:10px;text-align:center">
+          <div style="font-size:11px;color:var(--text2);font-weight:700;text-transform:uppercase">MRR</div>
+          <div style="font-size:22px;font-weight:900;color:var(--accent)">$${fmt(selM.mrr)}</div>
+        </div>
+      </div>
+      <div style="margin-bottom:10px"><span class="comm-tier-badge ${tc}">${tierLabel}</span></div>
+      <div class="comm-result-box" style="margin-bottom:10px">
+        <div class="comm-result-label">Residuals Added</div>
+        <div class="comm-result-total">$${fmt(selM.res)}/mo</div>
+        <div class="comm-result-breakdown">$${fmt(selM.mrr)} MRR × ${selM.tier===3?25:selM.tier===2?20:15}% = $${fmt(selM.res)}/mo</div>
+      </div>
+      <div class="comm-passive">
+        <div><div class="comm-passive-label">Triple Crown Bonus</div><div class="comm-passive-val">${selM.bonus>0?'$'+selM.bonus.toLocaleString():'—'}</div></div>
+        <div style="text-align:right"><div class="comm-passive-label">Annual from residuals</div><div class="comm-passive-val">$${fmt(selM.res*12)}/yr</div></div>
+      </div>
     </div>
     <div class="comm-card">
-      <div class="comm-card-title">🎯 ${months[selMonth]} Earnings</div>
-      <div style="margin-bottom:10px"><span class="comm-tier-badge ${tc}">${tl}</span></div>
-      <table class="comm-breakdown-table" style="margin-bottom:12px">
-        <thead><tr><th>Show tier</th><th>Shows</th><th>Per show</th></tr></thead>
+      <div class="comm-card-title">📈 ${st.year} Full Year Breakdown</div>
+      <table class="comm-breakdown-table">
+        <thead><tr><th>Month</th><th>Deals</th><th>Credits</th><th>MRR</th><th>Residuals</th><th>Bonus</th><th>Total</th></tr></thead>
         <tbody>
-          <tr ${shows<11?'class="comm-active-row"':''}><td>1</td><td>1–10</td><td>$25</td></tr>
-          <tr ${shows>=11&&shows<21?'class="comm-active-row"':''}><td>2</td><td>11–20</td><td>$35</td></tr>
-          <tr ${shows>=21?'class="comm-active-row"':''}><td>3</td><td>21+</td><td>$45</td></tr>
+          ${monthlyData.map((m,i)=>`<tr ${i===st.month?'class="comm-active-row"':''}>
+            <td>${m.month}</td><td>${m.deals}</td><td>${m.cr.toFixed(1)}</td>
+            <td>$${fmt(m.mrr)}</td><td class="comm-highlight">$${fmt(m.res)}/mo</td>
+            <td>${m.bonus>0?'$'+m.bonus.toLocaleString():'—'}</td>
+            <td style="font-weight:700">$${fmt(m.total)}</td>
+          </tr>`).join('')}
+          <tr style="border-top:2px solid var(--border);font-weight:800">
+            <td>TOTAL</td><td>${monthlyData.reduce((a,m)=>a+m.deals,0)}</td><td>—</td><td>—</td>
+            <td class="comm-highlight">$${fmt(yRes/12)}/mo avg</td>
+            <td>$${yBonus.toLocaleString()}</td>
+            <td style="color:var(--green);font-size:15px">$${fmt(yTotal)}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>`;}
+
+function _renderSDRTab(){
+  const cc=document.getElementById('comm-content');if(!cc)return;
+  const st=window._cs;
+  const months=['January','February','March','April','May','June','July','August','September','October','November','December'];
+  const sh=parseInt(st.sdrShows)||0;const aeCr=parseFloat(st.sdrCr)||0;
+  const t=sdrTierInfo(sh);const showPay=sh*t.pay;const vol=sdrBonus(aeCr);
+
+  cc.innerHTML=`<div class="comm-grid">
+    <div class="comm-card">
+      <div class="comm-card-title">📊 ${months[st.month]} ${st.year} — Enter Your Numbers</div>
+      <div style="font-size:11px;color:var(--text2);margin-bottom:16px;line-height:1.7">Qualified show: decision-maker attends full demo · Must be qualified business owner · Resets monthly</div>
+      <div class="comm-input-row">
+        <label>Qualified Show-Ups</label>
+        <input type="number" min="0" step="1" value="${st.sdrShows}" placeholder="e.g. 16"
+          oninput="sdrInput('sdrShows',this.value)" onchange="sdrInput('sdrShows',this.value)" onfocus="this.select()" class="comm-input">
+      </div>
+      <div class="comm-input-row">
+        <label>AE Closing Credits (this month)</label>
+        <input type="number" min="0" step="0.5" value="${st.sdrCr}" placeholder="e.g. 12"
+          oninput="sdrInput('sdrCr',this.value)" onchange="sdrInput('sdrCr',this.value)" onfocus="this.select()" class="comm-input">
+      </div>
+      <hr class="comm-divider">
+      <div style="font-size:11px;color:var(--text2);line-height:1.8">
+        <strong>SDR Volume Bonus (by AE closing credits):</strong><br>
+        10cr = <strong>$125</strong> &nbsp;·&nbsp; 16cr = <strong>$250</strong> &nbsp;·&nbsp; 21+cr = <strong>$500</strong>
+      </div>
+    </div>
+    <div class="comm-card">
+      <div class="comm-card-title">🎯 ${months[st.month]} Earnings</div>
+      <div style="margin-bottom:12px"><div id="sdr-tier-badge"><span class="comm-tier-badge ${t.tc}">${t.label}</span></div></div>
+      <table class="comm-breakdown-table" style="margin-bottom:14px">
+        <thead><tr><th>Tier</th><th>Shows</th><th>Per Show</th><th>SDR Volume Bonus</th></tr></thead>
+        <tbody>
+          <tr id="sdr-tr1" class="${sh<11?'comm-active-row':''}"><td>Tier 1</td><td>1–10</td><td>$25</td><td>$125 @ 10 AE credits</td></tr>
+          <tr id="sdr-tr2" class="${sh>=11&&sh<21?'comm-active-row':''}"><td>Tier 2</td><td>11–20</td><td>$35</td><td>$250 @ 16 AE credits</td></tr>
+          <tr id="sdr-tr3" class="${sh>=21?'comm-active-row':''}"><td>Tier 3</td><td>21+</td><td>$45</td><td>$500 @ 21+ AE credits</td></tr>
         </tbody>
       </table>
       <div class="comm-result-box sdr">
-        <div class="comm-result-label">Total (show pay + AE alignment)</div>
-        <div class="comm-result-total">$${total.toLocaleString()}</div>
-        <div class="comm-result-breakdown">Shows: $${showPay.toLocaleString()} + Alignment: $${align.toLocaleString()} (${aeT.tier>=2?'🏆':'company MRR in Tier 1'})</div>
+        <div class="comm-result-label">Total Monthly Earnings</div>
+        <div class="comm-result-total" id="sdr-total">$${fmt(showPay+vol)}</div>
+        <div class="comm-result-breakdown" id="sdr-breakdown">${sh} shows × $${t.pay} = $${fmt(showPay)}${vol>0?' + $'+vol+' volume bonus 🏆':''}</div>
       </div>
     </div>
   </div>
-  <div class="comm-card">
-    <div class="comm-card-title">📈 Examples</div>
+  <div class="comm-card" style="margin-top:16px">
+    <div class="comm-card-title">📈 SDR Performance Examples (from comp plan)</div>
     <table class="comm-breakdown-table">
-      <thead><tr><th>Scenario</th><th>Shows</th><th>Co. MRR tier</th><th>Show $</th><th>Align</th><th>Total</th></tr></thead>
+      <thead><tr><th>Scenario</th><th>Shows</th><th>AE Credits</th><th>Show Pay</th><th>Volume Bonus</th><th>Total Cash</th></tr></thead>
       <tbody>
-        <tr><td>Early</td><td>8</td><td>Tier 1</td><td>$200</td><td>$0</td><td>$200</td></tr>
-        <tr><td>Growth co</td><td>14</td><td>Tier 2</td><td>$490</td><td>$250</td><td class="comm-highlight">$740</td></tr>
-        <tr><td>Elite co</td><td>22</td><td>Tier 3</td><td>$990</td><td>$500</td><td class="comm-highlight">$1,490</td></tr>
+        <tr><td>Tier 1 solid</td><td>8</td><td>6</td><td>$200</td><td>—</td><td>$200</td></tr>
+        <tr><td>Tier 2 (16 shows / 12cr)</td><td>16</td><td>12</td><td>$560</td><td>$125</td><td class="comm-highlight">$685</td></tr>
+        <tr><td>Tier 2 + Crown (16cr)</td><td>16</td><td>16</td><td>$560</td><td>$250</td><td class="comm-highlight">$810</td></tr>
+        <tr><td>Tier 3 + Crown (25 shows / 22cr)</td><td>25</td><td>22</td><td>$1,125</td><td>$500</td><td class="comm-highlight">$1,625</td></tr>
       </tbody>
     </table>
-  </div>`;
-}
+  </div>`;}
 
-window.scAddDealRow = function(){
-  if(!Array.isArray(window._scDealAmounts)) window._scDealAmounts = [];
-  window._scDealAmounts.push(50);
-  renderScenarioCalc();
-};
-window.scRemoveDealRow = function(i){
-  if(!Array.isArray(window._scDealAmounts)||window._scDealAmounts.length<2) return;
-  window._scDealAmounts.splice(i,1);
-  renderScenarioCalc();
-};
-window.scSetDealAmt = function(i,v){
-  if(!Array.isArray(window._scDealAmounts)) window._scDealAmounts = [];
-  window._scDealAmounts[i] = v;
-};
+function _renderScenarioTab(){
+  const cc=document.getElementById('comm-content');if(!cc)return;
+  const st=window._cs;
+  const s=calcDeals(st.deals);
+  const idP='ae';
 
-function renderScenarioCalc() {
-  const cc = document.getElementById('comm-content'); if(!cc) return;
-  let amounts = Array.isArray(window._scDealAmounts)&&window._scDealAmounts.length ? window._scDealAmounts.map(x=>parseFloat(x)||0) : [0];
-  window._scDealAmounts = amounts;
-  const totalMrr = amounts.reduce((a,b)=>a+b,0);
-  const T = commTierFromMrr(totalMrr);
-  const residual = totalMrr * T.pct;
-  const prog = commNextTierProgress(totalMrr);
-  const tc = ['comm-tier-1','comm-tier-2','comm-tier-3'][T.tier-1];
-
-  const dealRows = amounts.map((amt,i)=>{
-    const cls = commClassifyMrr(amt);
-    const lab = cls==='Full'?'Full':cls==='Micro'?'Micro':'Free';
-    return `<div class="comm-deal-row" style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
-      <span style="font-size:11px;color:var(--text2);min-width:22px;">${i+1}.</span>
-      <input class="comm-input" style="flex:1;max-width:200px;" type="number" min="0" step="1" value="${amt}" onfocus="this.select()" oninput="scSetDealAmt(${i},parseFloat(this.value)||0);renderScenarioCalc();" />
-      <span class="comm-tier-badge ${cls==='Full'?'comm-tier-3':cls==='Micro'?'comm-tier-2':''}" style="${cls==='Free'?'opacity:.7':''}">${lab}</span>
-      ${amounts.length>1?`<button type="button" onclick="scRemoveDealRow(${i})" style="padding:4px 8px;font-size:11px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);cursor:pointer;color:var(--text2)">✕</button>`:''}
-    </div>`;
-  }).join('');
-
-  cc.innerHTML = `
-  <div class="comm-grid">
+  cc.innerHTML=`<div class="comm-grid">
     <div class="comm-card">
-      <div class="comm-card-title">🧮 Scenario — Revenue per deal</div>
-      <div style="font-size:11px;color:var(--text2);margin-bottom:12px;line-height:1.6">Enter actual <strong>New MRR</strong> per deal (any amount). ≥$80 Full · $20–$79 Micro · &lt;$20 Free</div>
-      ${dealRows}
-      <button type="button" onclick="scAddDealRow()" style="margin-top:8px;padding:8px 14px;border-radius:8px;border:1px dashed var(--gold);background:rgba(212,160,23,.06);color:var(--gold2);font-size:12px;font-weight:700;cursor:pointer;width:100%;">+ Add Deal</button>
-    </div>
-    <div class="comm-card">
-      <div class="comm-card-title">Running total</div>
-      <div style="margin-bottom:10px"><span class="comm-tier-badge ${tc}">${T.label}</span></div>
-      <div style="font-size:12px;color:var(--text2);margin-bottom:12px;line-height:1.5"><strong>New MRR:</strong> $${totalMrr.toFixed(0)}<br>${prog.text}</div>
-      <div class="comm-result-box" style="margin-bottom:12px">
-        <div class="comm-result-label">Monthly residual (at tier rate)</div>
-        <div class="comm-result-total">$${Math.round(residual).toLocaleString()}</div>
-        <div class="comm-result-breakdown">${Math.round(T.pct*100)}% × $${totalMrr.toFixed(0)} New MRR</div>
+      <div class="comm-card-title">🧮 Scenario Calc — Enter Any Deal At Any Revenue</div>
+      <div style="font-size:11px;color:var(--text2);margin-bottom:12px;line-height:1.8">
+        Type the <strong>monthly revenue</strong> for each deal. Credits auto-assigned:<br>
+        <span style="color:var(--green);font-weight:700">$70+/mo → 1.0 credit (Full Deal)</span><br>
+        <span style="color:#b8860b;font-weight:700">$20–$49.99/mo → 0.5 credit (Micro Deal)</span><br>
+        <span style="color:var(--text2)">Under $20/mo → 0 credits (Free / No Credit)</span>
       </div>
-      <div class="comm-passive">
-        <div><div class="comm-passive-label">Tier bonus</div><div class="comm-passive-val">${T.bonus>0?'$'+T.bonus.toLocaleString():'—'}</div></div>
-        <div style="text-align:right"><div class="comm-passive-label">Annualized residual</div><div class="comm-passive-val">$${Math.round(residual*12).toLocaleString()}/yr</div></div>
-      </div>
+      ${_dealTable(st.deals,idP)}
     </div>
+    ${_resultsCard(st.deals)}
   </div>
-  <div class="comm-card">
-    <div class="comm-card-title">📈 Tier comparison (your $${totalMrr.toFixed(0)} New MRR)</div>
+  <div class="comm-card" style="margin-top:16px">
+    <div class="comm-card-title">📈 AE Performance Examples (from comp plan)</div>
     <table class="comm-breakdown-table">
-      <thead><tr><th>Tier</th><th>MRR range</th><th>Residual</th><th>Bonus</th><th>At your MRR</th></tr></thead>
+      <thead><tr><th>Scenario</th><th>Credits</th><th>Tier</th><th>Bonus</th><th>Residuals/mo</th><th>Annual Impact</th></tr></thead>
       <tbody>
-        <tr ${T.tier===1?'class="comm-active-row"':''}><td>Tier 1 Base</td><td>$0 – $879</td><td>15%</td><td>—</td><td>$${Math.round(totalMrr*0.15)}/mo</td></tr>
-        <tr ${T.tier===2?'class="comm-active-row"':''}><td>Tier 2 Growth</td><td>$880 – $1,679</td><td>20%</td><td>$500</td><td>$${Math.round(totalMrr*0.20)}/mo + bonus</td></tr>
-        <tr ${T.tier===3?'class="comm-active-row"':''}><td>Tier 3 Elite</td><td>$1,680+</td><td>25%</td><td>$1,000</td><td>$${Math.round(totalMrr*0.25)}/mo + bonus</td></tr>
+        <tr><td>10 deals @ $70+</td><td>10.0</td><td><span class="comm-tier-badge comm-tier-1">Tier 1</span></td><td>$250</td><td>~$105/mo</td><td>~$1,510/yr</td></tr>
+        <tr><td>16 credits mixed</td><td>16.0</td><td><span class="comm-tier-badge comm-tier-2">Tier 2</span></td><td>$500</td><td>$160/mo</td><td class="comm-highlight">~$2,420/yr</td></tr>
+        <tr><td>21+ credits @ $50 avg</td><td>21.0</td><td><span class="comm-tier-badge comm-tier-3">Tier 3</span></td><td>$1,000</td><td>$262.50/mo</td><td class="comm-highlight">$4,150/yr</td></tr>
       </tbody>
     </table>
-  </div>`;
-}
-
-window.calcAE = function(){ if(window._commTab==='calc') renderScenarioCalc(); else renderCommissionCalc(); };
-window.calcSDR = function(){ renderCommissionCalc(); };
-window._patched = Object.assign({}, window._patched||{}, { commissionRevenueModel: true, commissionTiers: '879-1679-1680' });
-
-
+    <div style="margin-top:10px;padding:10px 14px;background:rgba(30,122,80,.08);border-radius:8px;font-size:12px;color:var(--green)">
+      💡 At $50/deal avg hitting Tier 3 = $3,150/yr added passive income every month you maintain it.
+    </div>
+  </div>`;}
 
 // ── TAB VISIBILITY ──
-window._tvRole='sdr';
-window.renderTabVisibilityPage=function(){
-  const c=document.getElementById('content');if(!c)return;
-  const role=window._tvRole||'sdr';
-  const vis=_loadTabVis(role);
-  c.innerHTML=`<div style="padding:24px;max-width:900px">
-    <div style="font-size:22px;font-weight:700;margin-bottom:6px">👁️ Tab Visibility</div>
-    <div style="font-size:13px;color:var(--text2);margin-bottom:20px">Control which pages each role sees in the sidebar. Saves automatically.</div>
-    <div style="margin-bottom:16px">
-      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text2);margin-bottom:10px">Configure for role:</div>
-      <button class="tab-vis-role-btn ${role==='sdr'?'active':''}" onclick="window._tvRole='sdr';renderTabVisibilityPage()">📞 SDR</button>
-      <button class="tab-vis-role-btn ${role==='ae'?'active':''}" onclick="window._tvRole='ae';renderTabVisibilityPage()">🏆 AE</button>
-      <button class="tab-vis-role-btn ${role==='admin'?'active':''}" onclick="window._tvRole='admin';renderTabVisibilityPage()">🔑 Admin</button>
-    </div>
-    <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
-      <button onclick="tvPreset()" style="padding:6px 14px;border-radius:6px;border:1px solid var(--gold);background:transparent;color:var(--gold-dim);font-size:12px;cursor:pointer">↺ Reset to Default</button>
-      <button onclick="tvAll(true)" style="padding:6px 14px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--text2);font-size:12px;cursor:pointer">Select All</button>
-      <button onclick="tvAll(false)" style="padding:6px 14px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--text2);font-size:12px;cursor:pointer">Clear All</button>
-    </div>
-    <div class="tab-vis-grid">${_ALL_TABS.map(t=>`<div class="tab-vis-item"><input type="checkbox" id="tv-${t.key}" ${vis.includes(t.key)?'checked':''} onchange="tvSave()"><label for="tv-${t.key}">${t.label}</label></div>`).join('')}</div>
-    <div style="margin-top:16px;padding:12px 18px;background:rgba(26,58,107,.08);border-radius:8px;font-size:12px;color:var(--accent)">✅ ${vis.length} tabs visible for ${role.toUpperCase()} — changes apply on next login</div>
-  </div>`;
-};
-window.tvSave=function(){
-  const role=window._tvRole||'sdr';
-  const checked=_ALL_TABS.filter(t=>document.getElementById('tv-'+t.key)?.checked).map(t=>t.key);
-  _saveTabVis(role,checked);applyTabVis();
-  if(typeof showToast==='function')showToast('✅ Tab visibility saved for '+role.toUpperCase());
-};
+const _ALL_TABS=[{key:'home',label:'🏠 Home'},{key:'leads',label:'👥 All Leads'},{key:'opportunities',label:'💎 Opportunities'},{key:'tasks',label:'✅ My Tasks'},{key:'clients',label:'🏆 Clients'},{key:'detailer-jobs',label:'🔧 Detailer Jobs'},{key:'accounts',label:'🏢 Accounts'},{key:'calendar',label:'📆 Calendar'},{key:'playbooks',label:'📖 Playbooks'},{key:'sequences',label:'⚡ Sequences'},{key:'deal-calc',label:'🧮 Deal Calculator'},{key:'commission-calc',label:'💰 Commission Calc'},{key:'content-studio',label:'🎬 Content Studio'},{key:'kpi',label:'📈 KPI Dashboard'},{key:'reports',label:'📊 Reports'},{key:'pipeline',label:'🔀 Pipeline'},{key:'forecast',label:'🔮 Forecast'},{key:'activity',label:'⚡ Activity Feed'},{key:'demo-report',label:'📅 Demo Schedule'},{key:'tab-visibility',label:'👁️ Tab Visibility'}];
+const _ROLE_PRESETS={sdr:['home','leads','tasks','calendar','activity','commission-calc','content-studio'],ae:['home','leads','opportunities','tasks','clients','pipeline','forecast','deal-calc','commission-calc','calendar','activity','demo-report'],admin:_ALL_TABS.map(t=>t.key)};
+function _loadTabVis(r){try{const s=localStorage.getItem('brnno_tab_vis_'+r);if(s)return JSON.parse(s);}catch(e){}return _ROLE_PRESETS[r]||_ALL_TABS.map(t=>t.key);}
+function _saveTabVis(r,t){localStorage.setItem('brnno_tab_vis_'+r,JSON.stringify(t));}
+window.renderTabVisibilityPage=function(){const c=document.getElementById('content');if(!c)return;const role=window._tvRole||'sdr';const vis=_loadTabVis(role);c.innerHTML=`<div style="padding:24px;max-width:900px"><div style="font-size:22px;font-weight:700;margin-bottom:6px">👁️ Tab Visibility</div><div style="font-size:13px;color:var(--text2);margin-bottom:20px">Control which pages each role sees in the sidebar.</div><div style="margin-bottom:16px"><div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text2);margin-bottom:10px">Configure for role:</div><button class="tab-vis-role-btn ${role==='sdr'?'active':''}" onclick="window._tvRole='sdr';renderTabVisibilityPage()">📞 SDR</button><button class="tab-vis-role-btn ${role==='ae'?'active':''}" onclick="window._tvRole='ae';renderTabVisibilityPage()">🏆 AE</button><button class="tab-vis-role-btn ${role==='admin'?'active':''}" onclick="window._tvRole='admin';renderTabVisibilityPage()">🔑 Admin</button></div><div style="display:flex;gap:8px;margin-bottom:16px"><button onclick="tvPreset()" style="padding:6px 14px;border-radius:6px;border:1px solid var(--gold);background:transparent;color:var(--gold-dim);font-size:12px;cursor:pointer">↺ Reset</button><button onclick="tvAll(true)" style="padding:6px 14px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--text2);font-size:12px;cursor:pointer">All</button><button onclick="tvAll(false)" style="padding:6px 14px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--text2);font-size:12px;cursor:pointer">None</button></div><div class="tab-vis-grid">${_ALL_TABS.map(t=>`<div class="tab-vis-item"><input type="checkbox" id="tv-${t.key}" ${vis.includes(t.key)?'checked':''} onchange="tvSave()"><label for="tv-${t.key}">${t.label}</label></div>`).join('')}</div><div style="margin-top:16px;padding:12px 18px;background:rgba(26,58,107,.08);border-radius:8px;font-size:12px;color:var(--accent)">✅ ${vis.length} tabs visible for ${role.toUpperCase()}</div></div>`;};
+window.tvSave=function(){const r=window._tvRole||'sdr';const ch=_ALL_TABS.filter(t=>document.getElementById('tv-'+t.key)?.checked).map(t=>t.key);_saveTabVis(r,ch);applyTabVis();if(typeof showToast==='function')showToast('✅ Saved for '+r.toUpperCase());};
 window.tvPreset=function(){const r=window._tvRole||'sdr';_saveTabVis(r,_ROLE_PRESETS[r]||_ALL_TABS.map(t=>t.key));renderTabVisibilityPage();applyTabVis();};
 window.tvAll=function(v){_ALL_TABS.forEach(t=>{const el=document.getElementById('tv-'+t.key);if(el)el.checked=v;});tvSave();};
-window.applyTabVis=function(){
-  const role=window._currentUserRole||'ae';
-  if(role==='admin')return;
-  const vis=_loadTabVis(role);
-  _ALL_TABS.forEach(t=>{const el=document.getElementById('nav-'+t.key);if(el)el.style.display=vis.includes(t.key)?'':'none';});
-  const h=document.getElementById('nav-home');if(h)h.style.display='';
-};
+window.applyTabVis=function(){const role=window._currentUserRole||'ae';if(role==='admin')return;const vis=_loadTabVis(role);_ALL_TABS.forEach(t=>{const el=document.getElementById('nav-'+t.key);if(el)el.style.display=vis.includes(t.key)?'':'none';});const h=document.getElementById('nav-home');if(h)h.style.display='';};
 
-// ── HOOK setPage FOR CUSTOM PAGES ──
-// Must run after DOMContentLoaded so the original setPage exists
-document.addEventListener('DOMContentLoaded', function() {
-  const _origSP = window.setPage;
-  if (!_origSP || window._brnnoCustPageHooked) return;
-  window._brnnoCustPageHooked = true;
-  // Save the original content HTML so we can restore it when leaving custom pages
-  window._origContentHTML = document.getElementById('content')?.innerHTML || '';
-  window.setPage = function(page, el) {
-    const _customPages = ['commission-calc','tab-visibility','detailer-jobs'];
-    // If leaving a custom page, restore original content so stats-row exists
-    if (!_customPages.includes(page) && _customPages.includes(window._currentPage)) {
-      const c = document.getElementById('content');
-      if (c && window._origContentHTML) c.innerHTML = window._origContentHTML;
-    }
-    if (_customPages.includes(page)) {
-      document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-      if (el) el.classList.add('active');
-      window._currentPage = page;
-      try { localStorage.setItem('brnno_lastpage_' + (currentRepEmail||'guest'), page); } catch(e) {}
-      if (page === 'commission-calc' && typeof renderCommissionCalc === 'function') {
-        renderCommissionCalc();
-        setTimeout(() => { if(typeof calcAE==='function')calcAE(); if(typeof calcSDR==='function')calcSDR(); }, 50);
-      }
-      if (page === 'tab-visibility' && typeof renderTabVisibilityPage === 'function') renderTabVisibilityPage();
-      if (page === 'detailer-jobs' && typeof renderDetailerJobsPage === 'function') renderDetailerJobsPage();
-      return;
-    }
-    _origSP(page, el);
-  };
-});
+// ── setPage HOOK ──
+document.addEventListener('DOMContentLoaded',function(){
+  const _o=window.setPage;if(!_o||window._brnnoCustPageHooked)return;
+  window._brnnoCustPageHooked=true;
+  window._origContentHTML=document.getElementById('content')?.innerHTML||'';
+  window.setPage=function(page,el){
+    const _cp=['commission-calc','tab-visibility','detailer-jobs'];
+    if(!_cp.includes(page)&&_cp.includes(window._currentPage)){const c=document.getElementById('content');if(c&&window._origContentHTML)c.innerHTML=window._origContentHTML;}
+    if(_cp.includes(page)){document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));if(el)el.classList.add('active');window._currentPage=page;try{localStorage.setItem('brnno_lastpage_'+(currentRepEmail||'guest'),page);}catch(e){}if(page==='commission-calc')renderCommissionCalc();if(page==='tab-visibility')renderTabVisibilityPage();if(page==='detailer-jobs'&&typeof renderDetailerJobsPage==='function')renderDetailerJobsPage();return;}_o(page,el);};});
 
-// ── ROLE DETECTION (runs after login data is available) ──
-(function initRoleAndTabs(){
-  if(typeof getAccounts!=='function'||typeof currentRepEmail==='undefined'||!currentRepEmail){
-    setTimeout(initRoleAndTabs,1500);return;
-  }
-  getAccounts().then(accs=>{
-    const me=accs.find(a=>a.username===currentRepEmail);
-    window._currentUserRole=me?(me.isAdmin?'admin':(me.role||'ae').toLowerCase()):'ae';
-    applyTabVis();
-    const ra=document.querySelector('.rep-area');
-    if(ra&&!document.getElementById('brnno-role-badge')){
-      const badge=document.createElement('div');
-      badge.id='brnno-role-badge';badge.style.cssText='margin-top:6px;text-align:center';
-      const r=window._currentUserRole;
-      badge.innerHTML=`<span class="role-badge role-badge-${r}">${r.toUpperCase()}</span>`;
-      ra.appendChild(badge);
-    }
-  }).catch(()=>{window._currentUserRole='ae';});
-})();
+// ── ROLE DETECTION ──
+(function init(){if(typeof getAccounts!=='function'||typeof currentRepEmail==='undefined'||!currentRepEmail){setTimeout(init,1500);return;}getAccounts().then(accs=>{const me=accs.find(a=>a.username===currentRepEmail);window._currentUserRole=me?(me.isAdmin?'admin':(me.role||'ae').toLowerCase()):'ae';applyTabVis();const ra=document.querySelector('.rep-area');if(ra&&!document.getElementById('brnno-role-badge')){const b=document.createElement('div');b.id='brnno-role-badge';b.style.cssText='margin-top:6px;text-align:center';const r=window._currentUserRole;b.innerHTML=`<span class="role-badge role-badge-${r}">${r.toUpperCase()}</span>`;ra.appendChild(b);}}).catch(()=>{window._currentUserRole='ae';});})();
 </script>
 </body>
 </html>
